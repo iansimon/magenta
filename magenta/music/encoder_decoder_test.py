@@ -19,6 +19,7 @@ import tensorflow as tf
 
 from magenta.common import sequence_example_lib
 from magenta.music import encoder_decoder
+from magenta.music import events_lib
 from magenta.music import testing_lib
 
 
@@ -216,6 +217,70 @@ class LookbackEventSequenceEncoderDecoderTest(tf.test.TestCase):
     self.assertEqual(0, self.enc.class_index_to_event(0, events[:5]))
     self.assertEqual(1, self.enc.class_index_to_event(1, events[:5]))
     self.assertEqual(2, self.enc.class_index_to_event(2, events[:5]))
+
+
+class MeterEventSequenceEncoderDecoderTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.enc = encoder_decoder.MeterEventSequenceEncoderDecoder(
+        testing_lib.TrivialOneHotEncoding(3), steps_per_quarter=2,
+        max_steps_per_bar=6, measure_counter_size=2, qpm_bands=[80.0, 120.0])
+
+  def testInputSize(self):
+    self.assertEquals(19, self.enc.input_size)
+
+  def testEventsToInput(self):
+    events = events_lib.SimpleEventSequence(
+        pad_event=0, events=[0, 1, 0, 2, 0], steps_per_bar=4,
+        steps_per_quarter=2, quarters_per_minute=100.0)
+    self.assertEqual([1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+                      0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                     self.enc.events_to_input(events, 0))
+    self.assertEqual([0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+                      0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                     self.enc.events_to_input(events, 1))
+    self.assertEqual([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+                      0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                     self.enc.events_to_input(events, 2))
+    self.assertEqual([0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+                      0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                     self.enc.events_to_input(events, 3))
+    self.assertEqual([1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+                      0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                     self.enc.events_to_input(events, 4))
+
+    events = events_lib.SimpleEventSequence(
+        pad_event=0, events=[0, 1, 0, 2, 0], steps_per_bar=3,
+        steps_per_quarter=2, quarters_per_minute=150.0)
+    self.assertEqual([1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+                      0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                     self.enc.events_to_input(events, 0))
+    self.assertEqual([0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+                      0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                     self.enc.events_to_input(events, 1))
+    self.assertEqual([1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+                      0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                     self.enc.events_to_input(events, 2))
+    self.assertEqual([0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+                      0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                     self.enc.events_to_input(events, 3))
+    self.assertEqual([1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+                      0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                     self.enc.events_to_input(events, 4))
+
+  def testEventsToInputStepsPerQuarterMismatch(self):
+    events = events_lib.SimpleEventSequence(
+        pad_event=0, events=[0, 1, 0, 2, 0], steps_per_bar=4,
+        steps_per_quarter=4, quarters_per_minute=100.0)
+    with self.assertRaises(encoder_decoder.EncodingException):
+      self.enc.events_to_input(events, 0)
+
+  def testEventsToInputTooManyStepsPerBar(self):
+    events = events_lib.SimpleEventSequence(
+        pad_event=0, events=[0, 1, 0, 2, 0], steps_per_bar=8,
+        steps_per_quarter=2, quarters_per_minute=100.0)
+    with self.assertRaises(encoder_decoder.EncodingException):
+      self.enc.events_to_input(events, 0)
 
 
 class ConditionalEventSequenceEncoderDecoderTest(tf.test.TestCase):

@@ -41,6 +41,11 @@ LookbackEventSequenceEncoderDecoder is an EventSequenceEncoderDecoder that also
 uses a OneHotEncoding of individual events. However, its input and output
 encodings also consider whether the event sequence is repeating, and the input
 encoding includes binary counters for timekeeping.
+
+MeterEventSequenceEncoderDecoder is another EventSequenceEncoderDecoder that
+uses a OneHotEncoding of individual events. Its input encoding includes
+information about the meter at multiple scales, including global time signature
+and tempo.
 """
 
 import abc
@@ -58,6 +63,14 @@ from magenta.pipelines import pipeline
 
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_LOOKBACK_DISTANCES = [DEFAULT_STEPS_PER_BAR, DEFAULT_STEPS_PER_BAR * 2]
+
+DEFAULT_QPM_BANDS = [20.0, 30.0, 40.0, 50.0, 60.0,
+                     80.0, 100.0, 120.0, 140.0, 160.0,
+                     200.0, 240.0, 280.0, 320.0, 360.0]
+
+
+class EncodingException(Exception):
+  pass
 
 
 class OneHotEncoding(object):
@@ -538,6 +551,157 @@ class LookbackEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
     return self._one_hot_encoding.decode_event(class_index)
 
 
+class MeterEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
+  """An EventSequenceEncoderDecoder that encodes meter at multiple scales."""
+
+  def __init__(self, one_hot_encoding, steps_per_quarter, max_steps_per_bar,
+               measure_counter_size=32, qpm_bands=DEFAULT_QPM_BANDS):
+    """Initializes the MeterEventSequenceEncoderDecoder.
+
+    Args:
+      one_hot_encoding: A OneHotEncoding object that transforms events to and
+          from integer indices.
+      steps_per_quarter: Number of steps per quarter note in encoded event
+          sequences.
+      max_steps_per_bar: Maximum number of steps per bar in encoded event
+          sequences.
+      measure_counter_size: Length of measure counter to use for input
+          encodings. After this many measures, the counter repeats at zero.
+      qpm_bands: QPM band boundaries for discrete tempo encoding.
+    """
+    self._one_hot_encoding = one_hot_encoding
+    self._steps_per_quarter = steps_per_quarter
+    self._max_steps_per_bar = max_steps_per_bar
+    self._measure_counter_size = measure_counter_size
+    self._qpm_bands = qpm_bands
+
+  @property
+  def input_size(self):
+    one_hot_size = self._one_hot_encoding.num_classes
+    return (one_hot_size +                  # current event
+            self._steps_per_quarter +       # current step in quarter note
+            (self._max_steps_per_bar /      # current quarter note in bar
+             self._steps_per_quarter) +
+            self._measure_counter_size +    # measure counter
+            self._max_steps_per_bar +       # one-hot measure length (global)
+            len(self._qpm_bands) + 1)       # one-hot tempo band (global)
+
+  @property
+  def num_classes(self):
+    return self._one_hot_encoding.num_classes
+
+  @property
+  def default_event_label(self):
+    return self._one_hot_encoding.encode_event(
+        self._one_hot_encoding.default_event)
+
+  def events_to_input(self, events, position):
+    """Returns the input vector for the given position in the event sequence.
+
+    Returns a self.input_size length list of floats. Assuming a one-hot
+    encoding with 38 classes, 4 steps per quarter note, a maximum of 16 quarter
+    notes per bar, a length-32 measure counter, and 16 tempo bands,
+    self.input_size will = 168. Each index represents a different input signal
+    to the model.
+
+    Indices [0, 167]:
+    [0, 37]: Event of current step.
+    [38, 41]: Current step in quarter note.
+    [42, 55]: Current quarter note in measure.
+    [56, 87]: Current value of measure counter.
+    [88, 151]: Global time signature (measure length).
+    [152, 167]: Global tempo bin.
+
+    Args:
+      events: A list-like sequence of events.
+      position: An integer position in the event sequence.
+
+    Returns:
+      An input vector, an self.input_size length list of floats.
+    """
+    if events.steps_per_quarter != self._steps_per_quarter:
+      raise EncodingException(
+          'expected %d steps per quarter, got %d' % (self._steps_per_quarter,
+                                                     events.steps_per_quarter))
+    if events.steps_per_bar > self._max_steps_per_bar:
+      raise EncodingException(
+          '%d steps per bar exceeds maximum of %d' % (events.steps_per_bar,
+                                                      self._max_steps_per_bar))
+
+    input_ = [0.0] * self.input_size
+    offset = 0
+
+    n = position + 1
+    bar = n / events.steps_per_bar
+    step_in_bar = n % events.steps_per_bar
+    quarter_in_bar = step_in_bar / self._steps_per_quarter
+    step_in_quarter = step_in_bar % self._steps_per_quarter
+
+    # Last event.
+    index = self._one_hot_encoding.encode_event(events[position])
+    input_[index] = 1.0
+    offset += self._one_hot_encoding.num_classes
+
+    # Position of step in current quarter note.
+    input_[offset + step_in_quarter] = 1.0
+    offset += self._steps_per_quarter
+
+    # Position of current quarter note in bar.
+    input_[offset + quarter_in_bar] = 1.0
+    offset += self._max_steps_per_bar / self._steps_per_quarter
+
+    # Current measure counter.
+    input_[offset + bar % self._measure_counter_size] = 1.0
+    offset += self._measure_counter_size
+
+    # Global measure length.
+    input_[offset + events.steps_per_bar - 1] = 1.0
+    offset += self._max_steps_per_bar
+
+    # Global tempo band.
+    qpm_index = len(self._qpm_bands)
+    for i, qpm in enumerate(self._qpm_bands):
+      if events.quarters_per_minute < qpm:
+        qpm_index = i
+        break
+    input_[offset + qpm_index] = 1.0
+    offset += len(self._qpm_bands) + 1
+
+    assert offset == self.input_size
+
+    return input_
+
+  def events_to_label(self, events, position):
+    """Returns the label for the given position in the event sequence.
+
+    Returns the zero-based index value for the given position in the event
+    sequence, as determined by the one hot encoding.
+
+    Args:
+      events: A list-like sequence of events.
+      position: An integer event position in the event sequence.
+
+    Returns:
+      A label, an integer.
+    """
+    return self._one_hot_encoding.encode_event(events[position])
+
+  def class_index_to_event(self, class_index, events):
+    """Returns the event for the given class index.
+
+    This is the reverse process of the self.events_to_label method.
+
+    Args:
+      class_index: An integer in the range [0, self.num_classes).
+      events: A list-like sequence of events. This object is not used in this
+          implementation.
+
+    Returns:
+      An event value.
+    """
+    return self._one_hot_encoding.decode_event(class_index)
+
+
 class ConditionalEventSequenceEncoderDecoder(object):
   """An encoder/decoder for conditional event sequences.
 
@@ -781,5 +945,9 @@ class EncoderPipeline(pipeline.Pipeline):
     self._encoder_decoder = encoder_decoder
 
   def transform(self, seq):
-    encoded = self._encoder_decoder.encode(seq)
-    return [encoded]
+    try:
+      encoded = self._encoder_decoder.encode(seq)
+      return [encoded]
+    except EncodingException:
+      self._set_stats([statistics.Counter('encoding_failures', 1)])
+      return []
