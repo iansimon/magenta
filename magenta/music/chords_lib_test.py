@@ -194,8 +194,9 @@ class ChordsLibTest(tf.test.TestCase):
 
   def testToSequence(self):
     chords = chords_lib.ChordProgression(
-        [NO_CHORD, 'C7', 'C7', 'C7', 'C7', 'Am7b5', 'F6', 'F6', NO_CHORD])
-    sequence = chords.to_sequence(sequence_start_time=2, qpm=60.0)
+        [NO_CHORD, 'C7', 'C7', 'C7', 'C7', 'Am7b5', 'F6', 'F6', NO_CHORD],
+        quarters_per_minute=60.0)
+    sequence = chords.to_sequence(sequence_start_time=2)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '

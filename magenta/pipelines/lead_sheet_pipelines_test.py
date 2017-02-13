@@ -73,9 +73,11 @@ class LeadSheetPipelinesTest(tf.test.TestCase):
     for melody_events, chord_events in zip(expected_melody_events,
                                            expected_chord_events):
       melody = melodies_lib.Melody(
-          melody_events, steps_per_quarter=1, steps_per_bar=4)
+          melody_events, steps_per_quarter=1, steps_per_bar=4,
+          quarters_per_minute=60)
       chords = chords_lib.ChordProgression(
-          chord_events, steps_per_quarter=1, steps_per_bar=4)
+          chord_events, steps_per_quarter=1, steps_per_bar=4,
+          quarters_per_minute=60)
       lead_sheet = lead_sheets_lib.LeadSheet(melody, chords)
       expected_lead_sheets.append(lead_sheet)
     unit = lead_sheet_pipelines.LeadSheetExtractor(

@@ -355,12 +355,12 @@ class MelodiesLibTest(tf.test.TestCase):
 
   def testToSequenceSimple(self):
     melody = melodies_lib.Melody(
-        [NO_EVENT, 1, NO_EVENT, NOTE_OFF, NO_EVENT, 2, 3, NOTE_OFF, NO_EVENT])
+        [NO_EVENT, 1, NO_EVENT, NOTE_OFF, NO_EVENT, 2, 3, NOTE_OFF, NO_EVENT],
+        quarters_per_minute=60.0)
     sequence = melody.to_sequence(
         velocity=10,
         instrument=1,
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
@@ -379,12 +379,12 @@ class MelodiesLibTest(tf.test.TestCase):
 
   def testToSequenceEndsWithSustainedNote(self):
     melody = melodies_lib.Melody(
-        [NO_EVENT, 1, NO_EVENT, NOTE_OFF, NO_EVENT, 2, 3, NO_EVENT, NO_EVENT])
+        [NO_EVENT, 1, NO_EVENT, NOTE_OFF, NO_EVENT, 2, 3, NO_EVENT, NO_EVENT],
+        quarters_per_minute=60.0)
     sequence = melody.to_sequence(
         velocity=100,
         instrument=0,
-        sequence_start_time=0,
-        qpm=60.0)
+        sequence_start_time=0)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
@@ -396,12 +396,12 @@ class MelodiesLibTest(tf.test.TestCase):
         sequence)
 
   def testToSequenceEndsWithNonzeroStart(self):
-    melody = melodies_lib.Melody([NO_EVENT, 1, NO_EVENT], start_step=4)
+    melody = melodies_lib.Melody([NO_EVENT, 1, NO_EVENT], start_step=4,
+                                 quarters_per_minute=60.0)
     sequence = melody.to_sequence(
         velocity=100,
         instrument=0,
-        sequence_start_time=0.5,
-        qpm=60.0)
+        sequence_start_time=0.5)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
@@ -411,12 +411,11 @@ class MelodiesLibTest(tf.test.TestCase):
         sequence)
 
   def testToSequenceEmpty(self):
-    melody = melodies_lib.Melody()
+    melody = melodies_lib.Melody(quarters_per_minute=60.0)
     sequence = melody.to_sequence(
         velocity=10,
         instrument=1,
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '

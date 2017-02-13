@@ -62,7 +62,8 @@ class DrumPipelinesTest(tf.test.TestCase):
     expected_drum_tracks = []
     for events_list in expected_events:
       drums = drums_lib.DrumTrack(
-          events_list, steps_per_quarter=1, steps_per_bar=4)
+          events_list, steps_per_quarter=1, steps_per_bar=4,
+          quarters_per_minute=60)
       expected_drum_tracks.append(drums)
     unit = drum_pipelines.DrumsExtractor(min_bars=1, gap_bars=1)
     self._unit_transform_test(unit, quantized_sequence, expected_drum_tracks)

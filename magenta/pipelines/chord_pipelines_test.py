@@ -56,7 +56,8 @@ class ChordPipelinesTest(tf.test.TestCase):
     expected_chord_progressions = []
     for events_list in expected_events:
       chords = chords_lib.ChordProgression(
-          events_list, steps_per_quarter=1, steps_per_bar=4)
+          events_list, steps_per_quarter=1, steps_per_bar=4,
+          quarters_per_minute=60)
       expected_chord_progressions.append(chords)
     unit = chord_pipelines.ChordsExtractor(all_transpositions=False)
     self._unit_transform_test(unit, quantized_sequence,

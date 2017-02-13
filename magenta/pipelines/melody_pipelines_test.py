@@ -63,7 +63,8 @@ class MelodyPipelinesTest(tf.test.TestCase):
     expected_melodies = []
     for events_list in expected_events:
       melody = melodies_lib.Melody(
-          events_list, steps_per_quarter=1, steps_per_bar=4)
+          events_list, steps_per_quarter=1, steps_per_bar=4,
+          quarters_per_minute=60)
       expected_melodies.append(melody)
     unit = melody_pipelines.MelodyExtractor(
         min_bars=1, min_unique_pitches=1, gap_bars=1)

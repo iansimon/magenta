@@ -38,6 +38,7 @@ from magenta.music.drums_lib import midi_file_to_drum_track
 from magenta.music.encoder_decoder import ConditionalEventSequenceEncoderDecoder
 from magenta.music.encoder_decoder import EventSequenceEncoderDecoder
 from magenta.music.encoder_decoder import LookbackEventSequenceEncoderDecoder
+from magenta.music.encoder_decoder import MeterEventSequenceEncoderDecoder
 from magenta.music.encoder_decoder import OneHotEncoding
 from magenta.music.encoder_decoder import OneHotEventSequenceEncoderDecoder
 

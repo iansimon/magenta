@@ -23,11 +23,12 @@ import copy
 
 # internal imports
 from magenta.music import constants
+from magenta.music import sequences_lib
 
 
+DEFAULT_QUARTERS_PER_MINUTE = constants.DEFAULT_QUARTERS_PER_MINUTE
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
-STANDARD_PPQ = constants.STANDARD_PPQ
 
 
 class NonIntegerStepsPerBarException(Exception):
@@ -132,11 +133,13 @@ class SimpleEventSequence(EventSequence):
        always be the first step of a bar.
     steps_per_quarter: Number of steps in in a quarter note.
     steps_per_bar: Number of steps in a bar (measure) of music.
+    quarters_per_minute: Number of quarter notes per minute.
   """
 
   def __init__(self, pad_event, events=None, start_step=0,
                steps_per_bar=DEFAULT_STEPS_PER_BAR,
-               steps_per_quarter=DEFAULT_STEPS_PER_QUARTER):
+               steps_per_quarter=DEFAULT_STEPS_PER_QUARTER,
+               quarters_per_minute=DEFAULT_QUARTERS_PER_MINUTE):
     """Construct a SimpleEventSequence.
 
     If `events` is specified, instantiate with the provided event list.
@@ -148,16 +151,19 @@ class SimpleEventSequence(EventSequence):
       start_step: The integer starting step offset.
       steps_per_bar: The number of steps in a bar.
       steps_per_quarter: The number of steps in a quarter note.
+      quarters_per_minute: The number of quarter notes per minute.
     """
     self._pad_event = pad_event
     if events is not None:
       self._from_event_list(events, start_step=start_step,
                             steps_per_bar=steps_per_bar,
-                            steps_per_quarter=steps_per_quarter)
+                            steps_per_quarter=steps_per_quarter,
+                            quarters_per_minute=quarters_per_minute)
     else:
       self._events = []
       self._steps_per_bar = steps_per_bar
       self._steps_per_quarter = steps_per_quarter
+      self._quarters_per_minute = quarters_per_minute
       self._start_step = start_step
       self._end_step = start_step
 
@@ -166,18 +172,21 @@ class SimpleEventSequence(EventSequence):
     self._events = []
     self._steps_per_bar = DEFAULT_STEPS_PER_BAR
     self._steps_per_quarter = DEFAULT_STEPS_PER_QUARTER
+    self._quarters_per_minute = DEFAULT_QUARTERS_PER_MINUTE
     self._start_step = 0
     self._end_step = 0
 
   def _from_event_list(self, events, start_step=0,
                        steps_per_bar=DEFAULT_STEPS_PER_BAR,
-                       steps_per_quarter=DEFAULT_STEPS_PER_QUARTER):
+                       steps_per_quarter=DEFAULT_STEPS_PER_QUARTER,
+                       quarters_per_minute=DEFAULT_QUARTERS_PER_MINUTE):
     """Initializes with a list of event values and sets attributes."""
     self._events = list(events)
     self._start_step = start_step
     self._end_step = start_step + len(self)
     self._steps_per_bar = steps_per_bar
     self._steps_per_quarter = steps_per_quarter
+    self._quarters_per_minute = quarters_per_minute
 
   def __iter__(self):
     """Return an iterator over the events in this SimpleEventSequence.
@@ -208,7 +217,8 @@ class SimpleEventSequence(EventSequence):
                       events=copy.deepcopy(self._events),
                       start_step=self.start_step,
                       steps_per_bar=self.steps_per_bar,
-                      steps_per_quarter=self.steps_per_quarter)
+                      steps_per_quarter=self.steps_per_quarter,
+                      quarters_per_minute=self.quarters_per_minute)
 
   def __eq__(self, other):
     if not isinstance(other, SimpleEventSequence):
@@ -216,6 +226,7 @@ class SimpleEventSequence(EventSequence):
     return (list(self) == list(other) and
             self.steps_per_bar == other.steps_per_bar and
             self.steps_per_quarter == other.steps_per_quarter and
+            self.quarters_per_minute == other.quarters_per_minute and
             self.start_step == other.start_step and
             self.end_step == other.end_step)
 
@@ -234,6 +245,10 @@ class SimpleEventSequence(EventSequence):
   @property
   def steps_per_quarter(self):
     return self._steps_per_quarter
+
+  @property
+  def quarters_per_minute(self):
+    return self._quarters_per_minute
 
   def append(self, event):
     """Appends event to the end of the sequence and increments the end step.
@@ -297,3 +312,32 @@ class SimpleEventSequence(EventSequence):
     self._end_step *= k
     self._steps_per_bar *= k
     self._steps_per_quarter *= k
+
+  def _meter_from_quantized_sequence(self, quantized_sequence):
+    """Populate meter attributes from the given quantized NoteSequence.
+
+    Populate the `steps_per_bar`, `steps_per_quarter`, and `quarters_per_minute`
+    fields of this event sequence from `quantized_sequence`.
+
+    Args:
+      quantized_sequence: A NoteSequence quantized with
+          sequences_lib.quantize_note_sequence.
+
+    Raises:
+      NonIntegerStepsPerBarException: If `quantized_sequence`'s bar length
+          (derived from its time signature) is not an integer number of time
+          steps.
+    """
+    sequences_lib.assert_is_quantized_sequence(quantized_sequence)
+
+    steps_per_bar_float = sequences_lib.steps_per_bar_in_quantized_sequence(
+        quantized_sequence)
+    if steps_per_bar_float % 1 != 0:
+      raise events_lib.NonIntegerStepsPerBarException(
+          'There are %f timesteps per bar. Time signature: %d/%d' %
+          (steps_per_bar_float, quantized_sequence.time_signatures[0].numerator,
+           quantized_sequence.time_signatures[0].denominator))
+    self._steps_per_bar = int(steps_per_bar_float)
+    self._steps_per_quarter = (
+        quantized_sequence.quantization_info.steps_per_quarter)
+    self._quarters_per_minute = quantized_sequence.tempos[0].qpm

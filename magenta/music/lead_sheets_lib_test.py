@@ -186,24 +186,23 @@ class LeadSheetsLibTest(tf.test.TestCase):
     # Sequence produced from lead sheet should contain notes from melody
     # sequence and chords from chord sequence as text annotations.
     melody = melodies_lib.Melody(
-        [NO_EVENT, 1, NO_EVENT, NOTE_OFF, NO_EVENT, 2, 3, NOTE_OFF, NO_EVENT])
+        [NO_EVENT, 1, NO_EVENT, NOTE_OFF, NO_EVENT, 2, 3, NOTE_OFF, NO_EVENT],
+        quarters_per_minute=60.0)
     chords = chords_lib.ChordProgression(
-        [NO_CHORD, 'A', 'A', 'C#m', 'C#m', 'D', 'B', 'B', 'B'])
+        [NO_CHORD, 'A', 'A', 'C#m', 'C#m', 'D', 'B', 'B', 'B'],
+        quarters_per_minute=60.0)
     lead_sheet = lead_sheets_lib.LeadSheet(melody, chords)
 
     sequence = lead_sheet.to_sequence(
         velocity=10,
         instrument=1,
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
     melody_sequence = melody.to_sequence(
         velocity=10,
         instrument=1,
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
     chords_sequence = chords.to_sequence(
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
 
     self.assertEquals(melody_sequence.ticks_per_quarter,
                       sequence.ticks_per_quarter)

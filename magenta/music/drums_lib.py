@@ -36,6 +36,7 @@ from magenta.protobuf import music_pb2
 
 MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
 MAX_MIDI_PITCH = constants.MAX_MIDI_PITCH
+DEFAULT_QUARTERS_PER_MINUTE = constants.DEFAULT_QUARTERS_PER_MINUTE
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
 STANDARD_PPQ = constants.STANDARD_PPQ
@@ -78,7 +79,8 @@ class DrumTrack(events_lib.SimpleEventSequence):
 
   def _from_event_list(self, events, start_step=0,
                        steps_per_bar=DEFAULT_STEPS_PER_BAR,
-                       steps_per_quarter=DEFAULT_STEPS_PER_QUARTER):
+                       steps_per_quarter=DEFAULT_STEPS_PER_QUARTER,
+                       quarters_per_minute=DEFAULT_QUARTERS_PER_MINUTE):
     """Initializes with a list of event values and sets attributes.
 
     Args:
@@ -86,6 +88,7 @@ class DrumTrack(events_lib.SimpleEventSequence):
       start_step: The integer starting step offset.
       steps_per_bar: The number of steps in a bar.
       steps_per_quarter: The number of steps in a quarter note.
+      quarters_per_minute: The tempo in quarter notes per minute.
 
     Raises:
       ValueError: If `events` contains an event that is not a valid drum event.
@@ -97,13 +100,15 @@ class DrumTrack(events_lib.SimpleEventSequence):
         raise ValueError('Drum event contains invalid note: %s' % event)
     super(DrumTrack, self)._from_event_list(
         events, start_step=start_step, steps_per_bar=steps_per_bar,
-        steps_per_quarter=steps_per_quarter)
+        steps_per_quarter=steps_per_quarter,
+        quarters_per_minute=quarters_per_minute)
 
   def __deepcopy__(self, unused_memo=None):
     return type(self)(events=copy.deepcopy(self._events),
                       start_step=self.start_step,
                       steps_per_bar=self.steps_per_bar,
-                      steps_per_quarter=self.steps_per_quarter)
+                      steps_per_quarter=self.steps_per_quarter,
+                      quarters_per_minute=self.quarters_per_minute)
 
   def __eq__(self, other):
     if not isinstance(other, DrumTrack):
@@ -159,19 +164,8 @@ class DrumTrack(events_lib.SimpleEventSequence):
           (derived from its time signature) is not an integer number of time
           steps.
     """
-    sequences_lib.assert_is_quantized_sequence(quantized_sequence)
     self._reset()
-
-    steps_per_bar_float = sequences_lib.steps_per_bar_in_quantized_sequence(
-        quantized_sequence)
-    if steps_per_bar_float % 1 != 0:
-      raise events_lib.NonIntegerStepsPerBarException(
-          'There are %f timesteps per bar. Time signature: %d/%d' %
-          (steps_per_bar_float, quantized_sequence.time_signatures[0].numerator,
-           quantized_sequence.time_signatures[0].denominator))
-    self._steps_per_bar = steps_per_bar = int(steps_per_bar_float)
-    self._steps_per_quarter = (
-        quantized_sequence.quantization_info.steps_per_quarter)
+    self._meter_from_quantized_sequence(quantized_sequence)
 
     # Group all drum notes that start at the same step.
     all_notes = [note for note in quantized_sequence.notes
@@ -192,7 +186,7 @@ class DrumTrack(events_lib.SimpleEventSequence):
     gap_start_index = 0
 
     track_start_step = (
-        notes[0][0] - (notes[0][0] - search_start_step) % steps_per_bar)
+        notes[0][0] - (notes[0][0] - search_start_step) % self.steps_per_bar)
     for start, group in notes:
 
       start_index = start - track_start_step
@@ -200,7 +194,7 @@ class DrumTrack(events_lib.SimpleEventSequence):
 
       # If a gap of `gap` or more steps is found, end the drum track.
       note_distance = start_index - gap_start_index
-      if len(self) and note_distance >= gap_bars * steps_per_bar:
+      if len(self) and note_distance >= gap_bars * self.steps_per_bar:
         break
 
       # Add a drum event, a set of drum "pitches".
@@ -218,15 +212,14 @@ class DrumTrack(events_lib.SimpleEventSequence):
     length = len(self)
     # Optionally round up `_end_step` to a multiple of `steps_per_bar`.
     if pad_end:
-      length += -len(self) % steps_per_bar
+      length += -len(self) % self.steps_per_bar
     self.set_length(length)
 
   def to_sequence(self,
                   velocity=100,
                   instrument=9,
                   program=0,
-                  sequence_start_time=0.0,
-                  qpm=120.0):
+                  sequence_start_time=0.0):
     """Converts the DrumTrack to NoteSequence proto.
 
     Args:
@@ -235,15 +228,14 @@ class DrumTrack(events_lib.SimpleEventSequence):
       program: Midi program to give each note.
       sequence_start_time: A time in seconds (float) that the first event in the
           sequence will land on.
-      qpm: Quarter notes per minute (float).
 
     Returns:
       A NoteSequence proto encoding the given drum track.
     """
-    seconds_per_step = 60.0 / qpm / self.steps_per_quarter
+    seconds_per_step = 60.0 / self.quarters_per_minute / self.steps_per_quarter
 
     sequence = music_pb2.NoteSequence()
-    sequence.tempos.add().qpm = qpm
+    sequence.tempos.add().qpm = self.quarters_per_minute
     sequence.ticks_per_quarter = STANDARD_PPQ
 
     sequence_start_time += self.start_step * seconds_per_step

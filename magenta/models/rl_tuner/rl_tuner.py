@@ -1793,9 +1793,10 @@ class RLTuner(object):
     print 'Generated sequence:', generated_seq
 
     melody = mlib.Melody(rl_tuner_ops.decoder(generated_seq,
-                                              self.q_network.transpose_amount))
+                                              self.q_network.transpose_amount),
+                         quarters_per_minute=rl_tuner_ops.DEFAULT_QPM)
 
-    sequence = melody.to_sequence(qpm=rl_tuner_ops.DEFAULT_QPM)
+    sequence = melody.to_sequence()
     filename = rl_tuner_ops.get_next_file_name(self.output_dir, title, 'mid')
     midi_io.sequence_proto_to_midi_file(sequence, filename)
 

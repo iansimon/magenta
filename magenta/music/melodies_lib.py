@@ -41,6 +41,7 @@ MAX_MELODY_EVENT = constants.MAX_MELODY_EVENT
 MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
 MAX_MIDI_PITCH = constants.MAX_MIDI_PITCH
 NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
+DEFAULT_QUARTERS_PER_MINUTE = constants.DEFAULT_QUARTERS_PER_MINUTE
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
 STANDARD_PPQ = constants.STANDARD_PPQ
@@ -94,6 +95,7 @@ class Melody(events_lib.SimpleEventSequence):
        be the first step of a bar.
     steps_per_quarter: Number of steps in in a quarter note.
     steps_per_bar: Number of steps in a bar (measure) of music.
+    quarters_per_minute: The tempo in quarter notes per minute.
   """
 
   def __init__(self, events=None, **kwargs):
@@ -103,7 +105,8 @@ class Melody(events_lib.SimpleEventSequence):
 
   def _from_event_list(self, events, start_step=0,
                        steps_per_bar=DEFAULT_STEPS_PER_BAR,
-                       steps_per_quarter=DEFAULT_STEPS_PER_QUARTER):
+                       steps_per_quarter=DEFAULT_STEPS_PER_QUARTER,
+                       quarters_per_minute=DEFAULT_QUARTERS_PER_MINUTE):
     """Initializes with a list of event values and sets attributes.
 
     Args:
@@ -111,6 +114,7 @@ class Melody(events_lib.SimpleEventSequence):
       start_step: The integer starting step offset.
       steps_per_bar: The number of steps in a bar.
       steps_per_quarter: The number of steps in a quarter note.
+      quarters_per_minute: The tempo in quarter notes per minute.
 
     Raises:
       ValueError: If `events` contains an event that is not in the proper range.
@@ -120,13 +124,15 @@ class Melody(events_lib.SimpleEventSequence):
         raise ValueError('Melody event out of range: %d' % event)
     super(Melody, self)._from_event_list(
         events, start_step=start_step, steps_per_bar=steps_per_bar,
-        steps_per_quarter=steps_per_quarter)
+        steps_per_quarter=steps_per_quarter,
+        quarters_per_minute=quarters_per_minute)
 
   def __deepcopy__(self, unused_memo=None):
     return type(self)(events=copy.deepcopy(self._events),
                       start_step=self.start_step,
                       steps_per_bar=self.steps_per_bar,
-                      steps_per_quarter=self.steps_per_quarter)
+                      steps_per_quarter=self.steps_per_quarter,
+                      quarters_per_minute=self.quarters_per_minute)
 
   def __eq__(self, other):
     if not isinstance(other, Melody):
@@ -285,19 +291,8 @@ class Melody(events_lib.SimpleEventSequence):
       PolyphonicMelodyException: If any of the notes start on the same step
           and `ignore_polyphonic_notes` is False.
     """
-    sequences_lib.assert_is_quantized_sequence(quantized_sequence)
     self._reset()
-
-    steps_per_bar_float = sequences_lib.steps_per_bar_in_quantized_sequence(
-        quantized_sequence)
-    if steps_per_bar_float % 1 != 0:
-      raise events_lib.NonIntegerStepsPerBarException(
-          'There are %f timesteps per bar. Time signature: %d/%d' %
-          (steps_per_bar_float, quantized_sequence.time_signatures[0].numerator,
-           quantized_sequence.time_signatures[0].denominator))
-    self._steps_per_bar = steps_per_bar = int(steps_per_bar_float)
-    self._steps_per_quarter = (
-        quantized_sequence.quantization_info.steps_per_quarter)
+    self._meter_from_quantized_sequence(quantized_sequence)
 
     # Sort track by note start times, and secondarily by pitch descending.
     notes = sorted([n for n in quantized_sequence.notes
@@ -311,7 +306,8 @@ class Melody(events_lib.SimpleEventSequence):
     # The first step in the melody, beginning at the first step of a bar.
     melody_start_step = (
         notes[0].quantized_start_step -
-        (notes[0].quantized_start_step - search_start_step) % steps_per_bar)
+        (notes[0].quantized_start_step - search_start_step) %
+         self.steps_per_bar)
     for note in notes:
       if filter_drums and note.is_drum:
         continue
@@ -348,7 +344,7 @@ class Melody(events_lib.SimpleEventSequence):
             'Unexpected note. Not in ascending order.')
 
       # If a gap of `gap` or more steps is found, end the melody.
-      if len(self) and off_distance >= gap_bars * steps_per_bar:
+      if len(self) and off_distance >= gap_bars * self.steps_per_bar:
         break
 
       # Add the note-on and off events to the melody.
@@ -367,15 +363,14 @@ class Melody(events_lib.SimpleEventSequence):
     length = len(self)
     # Optionally round up `_end_step` to a multiple of `steps_per_bar`.
     if pad_end:
-      length += -len(self) % steps_per_bar
+      length += -len(self) % self.steps_per_bar
     self.set_length(length)
 
   def to_sequence(self,
                   velocity=100,
                   instrument=0,
                   program=0,
-                  sequence_start_time=0.0,
-                  qpm=120.0):
+                  sequence_start_time=0.0):
     """Converts the Melody to NoteSequence proto.
 
     The end of the melody is treated as a NOTE_OFF event for any sustained
@@ -387,15 +382,14 @@ class Melody(events_lib.SimpleEventSequence):
       program: Midi program to give each note.
       sequence_start_time: A time in seconds (float) that the first note in the
           sequence will land on.
-      qpm: Quarter notes per minute (float).
 
     Returns:
       A NoteSequence proto encoding the given melody.
     """
-    seconds_per_step = 60.0 / qpm / self.steps_per_quarter
+    seconds_per_step = 60.0 / self.quarters_per_minute / self.steps_per_quarter
 
     sequence = music_pb2.NoteSequence()
-    sequence.tempos.add().qpm = qpm
+    sequence.tempos.add().qpm = self.quarters_per_minute
     sequence.ticks_per_quarter = STANDARD_PPQ
 
     sequence_start_time += self.start_step * seconds_per_step
@@ -677,27 +671,18 @@ def extract_melodies(quantized_sequence,
   return melodies, stats.values()
 
 
-def midi_file_to_melody(midi_file, steps_per_quarter=4, qpm=None,
+def midi_file_to_melody(midi_file, steps_per_quarter=4,
                         ignore_polyphonic_notes=True):
   """Loads a melody from a MIDI file.
 
   Args:
     midi_file: Absolute path to MIDI file.
     steps_per_quarter: Quantization of Melody. For example, 4 = 16th notes.
-    qpm: Tempo in quarters per a minute. If not set, tries to use the first
-        tempo of the midi track and defaults to
-        magenta.music.DEFAULT_QUARTERS_PER_MINUTE if fails.
-    ignore_polyphonic_notes: Only use the highest simultaneous note if True.
 
   Returns:
     A Melody object extracted from the MIDI file.
   """
   sequence = midi_io.midi_file_to_sequence_proto(midi_file)
-  if qpm is None:
-    if sequence.tempos:
-      qpm = sequence.tempos[0].qpm
-    else:
-      qpm = constants.DEFAULT_QUARTERS_PER_MINUTE
   quantized_sequence = sequences_lib.quantize_note_sequence(
       sequence, steps_per_quarter=steps_per_quarter)
   melody = Melody()

@@ -175,11 +175,11 @@ class DrumsLibTest(tf.test.TestCase):
   def testToSequenceSimple(self):
     drums = drums_lib.DrumTrack(
         [NO_DRUMS, DRUMS(1, 2), NO_DRUMS, NO_DRUMS, NO_DRUMS, DRUMS(2),
-         DRUMS(3), NO_DRUMS, NO_DRUMS])
+         DRUMS(3), NO_DRUMS, NO_DRUMS],
+        quarters_per_minute=60.0)
     sequence = drums.to_sequence(
         velocity=10,
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
@@ -204,11 +204,11 @@ class DrumsLibTest(tf.test.TestCase):
         sequence)
 
   def testToSequenceEndsWithNonzeroStart(self):
-    drums = drums_lib.DrumTrack([NO_DRUMS, DRUMS(1), NO_DRUMS], start_step=4)
+    drums = drums_lib.DrumTrack([NO_DRUMS, DRUMS(1), NO_DRUMS], start_step=4,
+                                quarters_per_minute=60.0)
     sequence = drums.to_sequence(
         velocity=100,
-        sequence_start_time=0.5,
-        qpm=60.0)
+        sequence_start_time=0.5)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
@@ -221,11 +221,10 @@ class DrumsLibTest(tf.test.TestCase):
         sequence)
 
   def testToSequenceEmpty(self):
-    drums = drums_lib.DrumTrack()
+    drums = drums_lib.DrumTrack(quarters_per_minute=60.0)
     sequence = drums.to_sequence(
         velocity=10,
-        sequence_start_time=2,
-        qpm=60.0)
+        sequence_start_time=2)
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '

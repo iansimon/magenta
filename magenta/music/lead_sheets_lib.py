@@ -25,13 +25,6 @@ from magenta.music import sequences_lib
 from magenta.pipelines import statistics
 from magenta.protobuf import music_pb2
 
-# Constants.
-DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
-DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
-
-DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
-DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
-
 # Shortcut to CHORD_SYMBOL annotation type.
 CHORD_SYMBOL = music_pb2.NoteSequence.TextAnnotation.CHORD_SYMBOL
 
@@ -90,6 +83,7 @@ class LeadSheet(events_lib.EventSequence):
     if (len(melody) != len(chords) or
         melody.steps_per_bar != chords.steps_per_bar or
         melody.steps_per_quarter != chords.steps_per_quarter or
+        melody.quarters_per_minute != chords.quarters_per_minute or
         melody.start_step != chords.start_step or
         melody.end_step != chords.end_step):
       raise MelodyChordsMismatchException()
@@ -177,8 +171,7 @@ class LeadSheet(events_lib.EventSequence):
   def to_sequence(self,
                   velocity=100,
                   instrument=0,
-                  sequence_start_time=0.0,
-                  qpm=120.0):
+                  sequence_start_time=0.0):
     """Converts the LeadSheet to NoteSequence proto.
 
     Args:
@@ -187,16 +180,15 @@ class LeadSheet(events_lib.EventSequence):
       instrument: Midi instrument to give each melody note.
       sequence_start_time: A time in seconds (float) that the first note (and
           chord) in the sequence will land on.
-      qpm: Quarter notes per minute (float).
 
     Returns:
       A NoteSequence proto encoding the melody and chords from the lead sheet.
     """
     sequence = self._melody.to_sequence(
         velocity=velocity, instrument=instrument,
-        sequence_start_time=sequence_start_time, qpm=qpm)
+        sequence_start_time=sequence_start_time)
     chord_sequence = self._chords.to_sequence(
-        sequence_start_time=sequence_start_time, qpm=qpm)
+        sequence_start_time=sequence_start_time)
     # A little ugly, but just add the chord annotations to the melody sequence.
     for text_annotation in chord_sequence.text_annotations:
       if text_annotation.annotation_type == CHORD_SYMBOL:

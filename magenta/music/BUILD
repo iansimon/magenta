@@ -192,6 +192,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":encoder_decoder",
+        ":events_lib",
         ":testing_lib",
         "//magenta/common:sequence_example_lib",
         # numpy dep
@@ -205,6 +206,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":constants",
+        ":sequences_lib",
         "//magenta/common:sequence_example_lib",
         # numpy dep
     ],

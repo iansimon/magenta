@@ -87,7 +87,8 @@ class ChordProgression(events_lib.SimpleEventSequence):
     return type(self)(events=copy.deepcopy(self._events),
                       start_step=self.start_step,
                       steps_per_bar=self.steps_per_bar,
-                      steps_per_quarter=self.steps_per_quarter)
+                      steps_per_quarter=self.steps_per_quarter,
+                      quarters_per_minute=self.quarters_per_minute)
 
   def __eq__(self, other):
     if not isinstance(other, ChordProgression):
@@ -142,19 +143,8 @@ class ChordProgression(events_lib.SimpleEventSequence):
           steps.
       CoincidentChordsException: If any of the chords start on the same step.
     """
-    sequences_lib.assert_is_quantized_sequence(quantized_sequence)
     self._reset()
-
-    steps_per_bar_float = sequences_lib.steps_per_bar_in_quantized_sequence(
-        quantized_sequence)
-    if steps_per_bar_float % 1 != 0:
-      raise events_lib.NonIntegerStepsPerBarException(
-          'There are %f timesteps per bar. Time signature: %d/%d' %
-          (steps_per_bar_float, quantized_sequence.time_signature.numerator,
-           quantized_sequence.time_signature.denominator))
-    self._steps_per_bar = int(steps_per_bar_float)
-    self._steps_per_quarter = (
-        quantized_sequence.quantization_info.steps_per_quarter)
+    self._meter_from_quantized_sequence(quantized_sequence)
 
     # Sort track by chord times.
     chords = sorted([a for a in quantized_sequence.text_annotations
@@ -203,9 +193,7 @@ class ChordProgression(events_lib.SimpleEventSequence):
     self._start_step = start_step
     self._end_step = end_step
 
-  def to_sequence(self,
-                  sequence_start_time=0.0,
-                  qpm=120.0):
+  def to_sequence(self, sequence_start_time=0.0):
     """Converts the ChordProgression to NoteSequence proto.
 
     This doesn't generate actual notes, but text annotations specifying the
@@ -214,15 +202,14 @@ class ChordProgression(events_lib.SimpleEventSequence):
     Args:
       sequence_start_time: A time in seconds (float) that the first chord in
           the sequence will land on.
-      qpm: Quarter notes per minute (float).
 
     Returns:
       A NoteSequence proto encoding the given chords as text annotations.
     """
-    seconds_per_step = 60.0 / qpm / self.steps_per_quarter
+    seconds_per_step = 60.0 / self.quarters_per_minute / self.steps_per_quarter
 
     sequence = music_pb2.NoteSequence()
-    sequence.tempos.add().qpm = qpm
+    sequence.tempos.add().qpm = self.quarters_per_minute
     sequence.ticks_per_quarter = STANDARD_PPQ
 
     current_figure = NO_CHORD
