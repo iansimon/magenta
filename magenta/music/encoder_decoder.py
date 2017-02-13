@@ -69,7 +69,7 @@ DEFAULT_QPM_BANDS = [20.0, 30.0, 40.0, 50.0, 60.0,
                      200.0, 240.0, 280.0, 320.0, 360.0]
 
 
-class EncodingException(Exception):
+class MeterEncodingException(Exception):
   pass
 
 
@@ -620,11 +620,11 @@ class MeterEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
       An input vector, an self.input_size length list of floats.
     """
     if events.steps_per_quarter != self._steps_per_quarter:
-      raise EncodingException(
+      raise MeterEncodingException(
           'expected %d steps per quarter, got %d' % (self._steps_per_quarter,
                                                      events.steps_per_quarter))
     if events.steps_per_bar > self._max_steps_per_bar:
-      raise EncodingException(
+      raise MeterEncodingException(
           '%d steps per bar exceeds maximum of %d' % (events.steps_per_bar,
                                                       self._max_steps_per_bar))
 
@@ -948,6 +948,7 @@ class EncoderPipeline(pipeline.Pipeline):
     try:
       encoded = self._encoder_decoder.encode(seq)
       return [encoded]
-    except EncodingException:
-      self._set_stats([statistics.Counter('encoding_failures', 1)])
+    except MeterEncodingException as e:
+      tf.logging.warning('Meter encoding failure: %s', e)
+      self._set_stats([statistics.Counter('meter_encoding_exception', 1)])
       return []
