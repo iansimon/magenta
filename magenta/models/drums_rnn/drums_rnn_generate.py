@@ -81,6 +81,11 @@ tf.app.flags.DEFINE_float(
     'The quarters per minute to play generated output at. If a primer MIDI is '
     'given, the qpm from that will override this flag. If qpm is None, qpm '
     'will default to 120.')
+tf.app.flags.DEFINE_string(
+    'time_signature', None,
+    'The time signature to use when generating drum tracks. If a primer MIDI '
+    'is given, the time signature from that will override this flag. If '
+    'time_signature is None, it will default to 4/4.')
 tf.app.flags.DEFINE_float(
     'temperature', 1.0,
     'The randomness of the generated drum tracks. 1.0 uses the unaltered '
@@ -131,6 +136,25 @@ def get_bundle():
   return magenta.music.read_bundle_file(bundle_file)
 
 
+def get_time_signature_numerator_and_denominator():
+  """Return the time signature specified by the `time_signature` flag.
+
+  Returns:
+    A tuple containing the time signature numerator and denominator specified by
+    the `time_signature` flag. If the flag is not defined, both numerator and
+    denominator will be 4.
+
+  Raises:
+    ValueError: If a valid time signature cannot be parsed from the flag.
+  """
+  numerator = denominator = 4
+  if FLAGS.time_signature:
+    numerator_str, denominator_str = FLAGS.time_signature.split('/')
+    numerator = int(numerator_str)
+    denominator = int(denominator_str)
+  return numerator, denominator
+
+
 def run_with_flags(generator):
   """Generates drum tracks and saves them as MIDI files.
 
@@ -169,6 +193,13 @@ def run_with_flags(generator):
     primer_drums = magenta.music.DrumTrack([frozenset([36])],
                                            quarters_per_minute=qpm)
     primer_sequence = primer_drums.to_sequence()
+
+  # Make sure the primer sequence has the desired time signature.
+  if not primer_sequence.time_signatures:
+    numerator, denominator = get_time_signature_numerator_and_denominator()
+    time_signature = primer_sequence.time_signatures.add()
+    time_signature.numerator = numerator
+    time_signature.denominator = denominator
 
   # Derive the total number of seconds to generate based on the QPM of the
   # priming sequence and the num_steps flag.

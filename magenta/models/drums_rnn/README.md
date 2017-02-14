@@ -12,6 +12,10 @@ This configuration maps all drums to a single drum class. It uses a basic binary
 
 This configuration maps all drums to a 9-piece drum kit consisting of bass drum, snare drum, closed and open hi-hat, three toms, and crash and ride cymbals. The set of drums is encoded as a length 512 one-hot vector, where each bit of the vector corresponds to one of the 9 drums. The input to the model is also augmented with binary counters.
 
+### Drum Kit with Meter
+
+This configuration uses the same drum mapping as the Drum Kit configuration, but also encodes the meter and tempo and includes them in the model input.
+
 ## How to Use
 
 First, set up your [Magenta environment](/README.md). Next, you can either use a pre-trained model or train your own.
@@ -26,7 +30,7 @@ If you want to get started right away, you can use a Drum Kit model that we've p
 
 ```
 BUNDLE_PATH=<absolute path of .mag file>
-CONFIG=<one of 'one_drum' or 'drum_kit', matching the bundle>
+CONFIG=<one of 'one_drum', 'drum_kit', or 'drum_kit_with_meter', matching the bundle>
 
 drums_rnn_generate \
 --config=${CONFIG} \
@@ -51,7 +55,7 @@ SequenceExamples are fed into the model during training and evaluation. Each Seq
 
 ```
 drums_rnn_create_dataset \
---config=<one of 'one_drum' or 'drum_kit'>
+--config=<one of 'one_drum', 'drum_kit', or 'drum_kit_with_meter'>
 --input=/tmp/notesequences.tfrecord \
 --output_dir=/tmp/drums_rnn/sequence_examples \
 --eval_ratio=0.10
