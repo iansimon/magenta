@@ -305,9 +305,9 @@ class Melody(events_lib.SimpleEventSequence):
 
     # The first step in the melody, beginning at the first step of a bar.
     melody_start_step = (
-        notes[0].quantized_start_step -
-        (notes[0].quantized_start_step - search_start_step) %
-         self.steps_per_bar)
+        notes[0].quantized_start_step - (
+            notes[0].quantized_start_step -
+            search_start_step) % self.steps_per_bar)
     for note in notes:
       if filter_drums and note.is_drum:
         continue
@@ -678,6 +678,7 @@ def midi_file_to_melody(midi_file, steps_per_quarter=4,
   Args:
     midi_file: Absolute path to MIDI file.
     steps_per_quarter: Quantization of Melody. For example, 4 = 16th notes.
+    ignore_polyphonic_notes: Only use the highest simultaneous note if True.
 
   Returns:
     A Melody object extracted from the MIDI file.

@@ -272,14 +272,14 @@ class MeterEventSequenceEncoderDecoderTest(tf.test.TestCase):
     events = events_lib.SimpleEventSequence(
         pad_event=0, events=[0, 1, 0, 2, 0], steps_per_bar=4,
         steps_per_quarter=4, quarters_per_minute=100.0)
-    with self.assertRaises(encoder_decoder.EncodingException):
+    with self.assertRaises(encoder_decoder.MeterEncodingException):
       self.enc.events_to_input(events, 0)
 
   def testEventsToInputTooManyStepsPerBar(self):
     events = events_lib.SimpleEventSequence(
         pad_event=0, events=[0, 1, 0, 2, 0], steps_per_bar=8,
         steps_per_quarter=2, quarters_per_minute=100.0)
-    with self.assertRaises(encoder_decoder.EncodingException):
+    with self.assertRaises(encoder_decoder.MeterEncodingException):
       self.enc.events_to_input(events, 0)
 
 

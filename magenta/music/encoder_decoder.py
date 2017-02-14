@@ -59,6 +59,7 @@ import tensorflow as tf
 from magenta.common import sequence_example_lib
 from magenta.music import constants
 from magenta.pipelines import pipeline
+from magenta.pipelines import statistics
 
 
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
@@ -555,7 +556,7 @@ class MeterEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
   """An EventSequenceEncoderDecoder that encodes meter at multiple scales."""
 
   def __init__(self, one_hot_encoding, steps_per_quarter, max_steps_per_bar,
-               measure_counter_size=32, qpm_bands=DEFAULT_QPM_BANDS):
+               measure_counter_size=32, qpm_bands=None):
     """Initializes the MeterEventSequenceEncoderDecoder.
 
     Args:
@@ -567,13 +568,14 @@ class MeterEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
           sequences.
       measure_counter_size: Length of measure counter to use for input
           encodings. After this many measures, the counter repeats at zero.
-      qpm_bands: QPM band boundaries for discrete tempo encoding.
+      qpm_bands: QPM band boundaries for discrete tempo encoding. If None,
+          `DEFAULT_QPM_BANDS` will be used.
     """
     self._one_hot_encoding = one_hot_encoding
     self._steps_per_quarter = steps_per_quarter
     self._max_steps_per_bar = max_steps_per_bar
     self._measure_counter_size = measure_counter_size
-    self._qpm_bands = qpm_bands
+    self._qpm_bands = qpm_bands if qpm_bands is not None else DEFAULT_QPM_BANDS
 
   @property
   def input_size(self):
@@ -618,6 +620,11 @@ class MeterEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
 
     Returns:
       An input vector, an self.input_size length list of floats.
+
+    Raises:
+      MeterEncodingException: If the number of steps per quarter note in
+      `events` does not match `self._steps_per_quarter`, or if the number of
+      steps per bar in `events` exceeds `self._max_steps_per_bar`.
     """
     if events.steps_per_quarter != self._steps_per_quarter:
       raise MeterEncodingException(

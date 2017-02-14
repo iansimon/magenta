@@ -181,6 +181,7 @@ py_library(
         ":constants",
         "//magenta/common:sequence_example_lib",
         "//magenta/pipelines",
+        "//magenta/pipelines:statistics",
         # numpy dep
         # tensorflow dep
     ],
@@ -228,7 +229,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":chords_lib",
-        ":constants",
         ":events_lib",
         ":melodies_lib",
         ":sequences_lib",

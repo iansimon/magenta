@@ -333,7 +333,7 @@ class SimpleEventSequence(EventSequence):
     steps_per_bar_float = sequences_lib.steps_per_bar_in_quantized_sequence(
         quantized_sequence)
     if steps_per_bar_float % 1 != 0:
-      raise events_lib.NonIntegerStepsPerBarException(
+      raise NonIntegerStepsPerBarException(
           'There are %f timesteps per bar. Time signature: %d/%d' %
           (steps_per_bar_float, quantized_sequence.time_signatures[0].numerator,
            quantized_sequence.time_signatures[0].denominator))
