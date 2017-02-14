@@ -158,8 +158,9 @@ def run_with_flags(generator):
   primer_sequence = None
   qpm = FLAGS.qpm if FLAGS.qpm else magenta.music.DEFAULT_QUARTERS_PER_MINUTE
   if FLAGS.primer_melody:
-    primer_melody = magenta.music.Melody(ast.literal_eval(FLAGS.primer_melody))
-    primer_sequence = primer_melody.to_sequence(qpm=qpm)
+    primer_melody = magenta.music.Melody(ast.literal_eval(FLAGS.primer_melody),
+                                         quarters_per_minute=qpm)
+    primer_sequence = primer_melody.to_sequence()
   elif primer_midi:
     primer_sequence = magenta.music.midi_file_to_sequence_proto(primer_midi)
     if primer_sequence.tempos and primer_sequence.tempos[0].qpm:
@@ -167,14 +168,15 @@ def run_with_flags(generator):
   else:
     tf.logging.warning(
         'No priming sequence specified. Defaulting to a single middle C.')
-    primer_melody = magenta.music.Melody([60])
-    primer_sequence = primer_melody.to_sequence(qpm=qpm)
+    primer_melody = magenta.music.Melody([60], quarters_per_minute=qpm)
+    primer_sequence = primer_melody.to_sequence()
 
   # Create backing chord progression from flags.
   raw_chords = FLAGS.backing_chords.split()
   repeated_chords = [chord for chord in raw_chords
                      for _ in range(FLAGS.steps_per_chord)]
-  backing_chords = magenta.music.ChordProgression(repeated_chords)
+  backing_chords = magenta.music.ChordProgression(repeated_chords,
+                                                  quarters_per_minute=qpm)
 
   # Derive the total number of seconds to generate based on the QPM of the
   # priming sequence and the length of the backing chord progression.
@@ -209,7 +211,7 @@ def run_with_flags(generator):
         end_time=total_seconds)
 
   # Add the backing chords to the input sequence.
-  chord_sequence = backing_chords.to_sequence(sequence_start_time=0.0, qpm=qpm)
+  chord_sequence = backing_chords.to_sequence(sequence_start_time=0.0)
   for text_annotation in chord_sequence.text_annotations:
     if text_annotation.annotation_type == CHORD_SYMBOL:
       chord = input_sequence.text_annotations.add()

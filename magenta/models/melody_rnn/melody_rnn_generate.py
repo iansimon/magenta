@@ -150,8 +150,9 @@ def run_with_flags(generator):
   primer_sequence = None
   qpm = FLAGS.qpm if FLAGS.qpm else magenta.music.DEFAULT_QUARTERS_PER_MINUTE
   if FLAGS.primer_melody:
-    primer_melody = magenta.music.Melody(ast.literal_eval(FLAGS.primer_melody))
-    primer_sequence = primer_melody.to_sequence(qpm=qpm)
+    primer_melody = magenta.music.Melody(ast.literal_eval(FLAGS.primer_melody),
+                                         quarters_per_minute=qpm)
+    primer_sequence = primer_melody.to_sequence()
   elif primer_midi:
     primer_sequence = magenta.music.midi_file_to_sequence_proto(primer_midi)
     if primer_sequence.tempos and primer_sequence.tempos[0].qpm:
@@ -159,8 +160,8 @@ def run_with_flags(generator):
   else:
     tf.logging.warning(
         'No priming sequence specified. Defaulting to a single middle C.')
-    primer_melody = magenta.music.Melody([60])
-    primer_sequence = primer_melody.to_sequence(qpm=qpm)
+    primer_melody = magenta.music.Melody([60], quarters_per_minute=qpm)
+    primer_sequence = primer_melody.to_sequence()
 
   # Derive the total number of seconds to generate based on the QPM of the
   # priming sequence and the num_steps flag.

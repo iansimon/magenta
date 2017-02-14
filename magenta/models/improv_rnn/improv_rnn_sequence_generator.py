@@ -106,7 +106,8 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
       # If no melody could be extracted, create an empty melody that starts 1
       # step before the request start_step. This will result in 1 step of
       # silence when the melody is extended below.
-      melody = mm.Melody([], start_step=max(0, start_step - 1))
+      melody = mm.Melody([], start_step=max(0, start_step - 1),
+                         quarters_per_minute=qpm)
 
     extracted_chords, _ = mm.extract_chords(quantized_backing_sequence)
     chords = extracted_chords[0]
@@ -133,7 +134,7 @@ class ImprovRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
     generated_melody = self._model.generate_melody(melody, chords, **args)
     generated_lead_sheet = mm.LeadSheet(generated_melody, chords)
-    generated_sequence = generated_lead_sheet.to_sequence(qpm=qpm)
+    generated_sequence = generated_lead_sheet.to_sequence()
     assert (generated_sequence.total_time - generate_section.end_time) <= 1e-5
     return generated_sequence
 

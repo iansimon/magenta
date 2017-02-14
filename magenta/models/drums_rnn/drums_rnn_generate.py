@@ -156,8 +156,9 @@ def run_with_flags(generator):
   if FLAGS.primer_drums:
     primer_drums = magenta.music.DrumTrack(
         [frozenset(pitches)
-         for pitches in ast.literal_eval(FLAGS.primer_drums)])
-    primer_sequence = primer_drums.to_sequence(qpm=qpm)
+         for pitches in ast.literal_eval(FLAGS.primer_drums)],
+        quarters_per_minute=qpm)
+    primer_sequence = primer_drums.to_sequence()
   elif primer_midi:
     primer_sequence = magenta.music.midi_file_to_sequence_proto(primer_midi)
     if primer_sequence.tempos and primer_sequence.tempos[0].qpm:
@@ -165,8 +166,9 @@ def run_with_flags(generator):
   else:
     tf.logging.warning(
         'No priming sequence specified. Defaulting to a single bass drum hit.')
-    primer_drums = magenta.music.DrumTrack([frozenset([36])])
-    primer_sequence = primer_drums.to_sequence(qpm=qpm)
+    primer_drums = magenta.music.DrumTrack([frozenset([36])],
+                                           quarters_per_minute=qpm)
+    primer_sequence = primer_drums.to_sequence()
 
   # Derive the total number of seconds to generate based on the QPM of the
   # priming sequence and the num_steps flag.
