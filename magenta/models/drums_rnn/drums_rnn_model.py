@@ -110,12 +110,13 @@ default_configs = {
             max_steps_per_bar=64),
         magenta.common.HParams(
             batch_size=128,
-            rnn_layer_sizes=[256, 256, 256],
+            rnn_layer_sizes=[512, 512, 512],
             dropout_keep_prob=0.5,
             skip_first_n_losses=0,
             attn_length=32,
             clip_norm=3,
             initial_learning_rate=0.001,
             decay_steps=1000,
-            decay_rate=0.95))
+            decay_rate=0.95),
+        steps_per_quarter=4)
 }
