@@ -212,6 +212,11 @@ class ChordProgression(events_lib.SimpleEventSequence):
     sequence.tempos.add().qpm = self.quarters_per_minute
     sequence.ticks_per_quarter = STANDARD_PPQ
 
+    time_signature = sequence.time_signatures.add()
+    time_signature.numerator, time_signature.denominator = (
+        sequences_lib.steps_per_quarter_and_bar_to_time_signature(
+            self.steps_per_quarter, self.steps_per_bar))
+
     current_figure = NO_CHORD
     for step, figure in enumerate(self):
       if figure != current_figure:

@@ -286,6 +286,38 @@ def steps_per_bar_in_quantized_sequence(note_sequence):
   return steps_per_bar_float
 
 
+def steps_per_quarter_and_bar_to_time_signature(steps_per_quarter,
+                                                steps_per_bar,
+                                                max_denominator=64):
+  """Convert number of steps per bar and quarter note to time signature.
+
+  Args:
+    steps_per_quarter: The integer number of steps in a quarter note.
+    steps_per_bar: The integer number of steps per bar.
+    max_denominator: The maximum time signature denominator that should be
+        returned.
+
+  Returns:
+    A tuple where the first element is the integer time signature numerator and
+    the second element is the integer time signature denominator.
+
+  Raises:
+    BadTimeSignatureException: If `steps_per_quarter` and `steps_per_bar`
+        cannot correspond to a valid time signature with denominator less than
+        `max_denominator`.
+  """
+  denominator = 4
+  while denominator * steps_per_bar % (4 * steps_per_quarter) != 0:
+    denominator *= 2
+    if denominator > max_denominator:
+      raise BadTimeSignatureException(
+          '%d steps per quarter note and %d steps per bar cannot correspond to '
+          'a valid time signature with maximum denominator %d' % (
+              steps_per_quarter, steps_per_bar, max_denominator))
+  numerator = denominator * steps_per_bar / (4 * steps_per_quarter)
+  return numerator, denominator
+
+
 def split_note_sequence_on_time_changes(note_sequence, split_notes=True):
   """Split one NoteSequence into many around time signature and tempo changes.
 

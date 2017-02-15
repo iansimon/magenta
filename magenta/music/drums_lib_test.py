@@ -183,6 +183,7 @@ class DrumsLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > '
         'total_time: 3.75 '
         'notes < '
@@ -212,6 +213,7 @@ class DrumsLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > '
         'total_time: 2.0 '
         'notes < '
@@ -228,6 +230,7 @@ class DrumsLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > ',
         sequence)
 

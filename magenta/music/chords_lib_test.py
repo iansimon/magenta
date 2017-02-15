@@ -200,6 +200,7 @@ class ChordsLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > '
         'text_annotations < '
         '  text: "C7" time: 2.25 annotation_type: CHORD_SYMBOL '

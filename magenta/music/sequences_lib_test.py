@@ -421,6 +421,20 @@ class SequencesLibTest(tf.test.TestCase):
     sequences_lib.quantize_note_sequence(
         self.note_sequence, self.steps_per_quarter)
 
+  def testStepsPerQuarterAndBarToTimeSignature(self):
+    self.assertEqual(
+        (4, 4),
+        sequences_lib.steps_per_quarter_and_bar_to_time_signature(4, 16))
+    self.assertEqual(
+        (3, 4),
+        sequences_lib.steps_per_quarter_and_bar_to_time_signature(4, 12))
+    self.assertEqual(
+        (9, 8),
+        sequences_lib.steps_per_quarter_and_bar_to_time_signature(4, 18))
+    self.assertEqual(
+        (15, 16),
+        sequences_lib.steps_per_quarter_and_bar_to_time_signature(4, 15))
+
   def testStepsPerQuarterToStepsPerSecond(self):
     self.assertEqual(
         4.0, sequences_lib.steps_per_quarter_to_steps_per_second(4, 60.0))

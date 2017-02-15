@@ -238,6 +238,11 @@ class DrumTrack(events_lib.SimpleEventSequence):
     sequence.tempos.add().qpm = self.quarters_per_minute
     sequence.ticks_per_quarter = STANDARD_PPQ
 
+    time_signature = sequence.time_signatures.add()
+    time_signature.numerator, time_signature.denominator = (
+        sequences_lib.steps_per_quarter_and_bar_to_time_signature(
+            self.steps_per_quarter, self.steps_per_bar))
+
     sequence_start_time += self.start_step * seconds_per_step
     for step, event in enumerate(self):
       for pitch in event:

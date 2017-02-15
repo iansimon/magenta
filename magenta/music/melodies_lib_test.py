@@ -364,6 +364,7 @@ class MelodiesLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > '
         'total_time: 3.75 '
         'notes < '
@@ -388,6 +389,7 @@ class MelodiesLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > '
         'total_time: 2.25 '
         'notes < pitch: 1 velocity: 100 start_time: 0.25 end_time: 0.75 > '
@@ -405,6 +407,7 @@ class MelodiesLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > '
         'total_time: 2.25 '
         'notes < pitch: 1 velocity: 100 start_time: 1.75 end_time: 2.25 > ',
@@ -419,6 +422,7 @@ class MelodiesLibTest(tf.test.TestCase):
 
     self.assertProtoEquals(
         'ticks_per_quarter: 220 '
+        'time_signatures < numerator: 4 denominator: 4 > '
         'tempos < qpm: 60.0 > ',
         sequence)
 
