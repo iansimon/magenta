@@ -83,9 +83,8 @@ tf.app.flags.DEFINE_float(
     'will default to 120.')
 tf.app.flags.DEFINE_string(
     'time_signature', None,
-    'The time signature to use when generating drum tracks. If a primer MIDI '
-    'is given, the time signature from that will override this flag. If '
-    'time_signature is None, it will default to 4/4.')
+    'The time signature to use when generating drum tracks. If time_signature '
+    'is None, it will default to 4/4.')
 tf.app.flags.DEFINE_float(
     'temperature', 1.0,
     'The randomness of the generated drum tracks. 1.0 uses the unaltered '
@@ -195,11 +194,10 @@ def run_with_flags(generator):
     primer_sequence = primer_drums.to_sequence()
 
   # Make sure the primer sequence has the desired time signature.
-  if not primer_sequence.time_signatures:
+  if primer_sequence.time_signatures:
     numerator, denominator = get_time_signature_numerator_and_denominator()
-    time_signature = primer_sequence.time_signatures.add()
-    time_signature.numerator = numerator
-    time_signature.denominator = denominator
+    primer_sequence.time_signatures[0].numerator = numerator
+    primer_sequence.time_signatures[0].denominator = denominator
 
   # Derive the total number of seconds to generate based on the QPM of the
   # priming sequence and the num_steps flag.
