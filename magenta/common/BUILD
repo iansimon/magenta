@@ -26,10 +26,25 @@ py_library(
     name = "common",
     srcs = ["__init__.py"],
     deps = [
+        ":beam_search",
         ":concurrency",
         ":sequence_example_lib",
         ":state_util",
         ":testing_lib",
+    ],
+)
+
+py_library(
+    name = "beam_search",
+    srcs = ["beam_search.py"],
+)
+
+py_test(
+    name = "beam_search_test",
+    srcs = ["beam_search_test.py"],
+    deps = [
+        ":beam_search",
+        # tensorflow dep
     ],
 )
 
