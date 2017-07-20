@@ -31,7 +31,8 @@ import magenta.music as mm
 
 # Model state when generating event sequences, consisting of the next inputs to
 # feed the model, and the current RNN state.
-ModelState = collections.namedtuple('ModelState', ['inputs', 'rnn_state'])
+ModelState = collections.namedtuple(
+    'ModelState', ['inputs', 'rnn_state', 'modify_events_callback_state'])
 
 
 class EventSequenceRnnModelException(Exception):
@@ -130,8 +131,8 @@ class EventSequenceRnnModel(mm.BaseModel):
     Args:
       event_sequences: A list of event sequence objects, which are extended by
           this method.
-      model_states: A list of model states, each of which contains model inputs
-          and initial RNN states.
+      model_states: A list of model states, each of which contains model inputs,
+          initial RNN states, and optional modify events callback states.
       logliks: A list containing the current log-likelihood for each event
           sequence.
       temperature: The softmax temperature.
@@ -141,15 +142,16 @@ class EventSequenceRnnModel(mm.BaseModel):
           used along with the target sequence to generate model inputs.
       modify_events_callback: An optional callback for modifying the event list.
           Can be used to inject events rather than having them generated. If not
-          None, will be called with 3 arguments after every event: the current
-          EventSequenceEncoderDecoder, a list of current EventSequences, and a
-          list of current encoded event inputs.
+          None, will be called with 4 arguments after every event: the current
+          EventSequenceEncoderDecoder, a list of current EventSequences, a list
+          of current encoded event inputs, and optional callback states.
 
     Returns:
       event_sequences: A list of extended event sequences. These are modified in
           place but also returned.
       final_states: A list of resulting model states, containing model inputs
-          for the next step along with RNN states for each event sequence.
+          for the next step along with RNN states for each event sequence and
+          optional modify events callback states.
       logliks: A list containing the updated log-likelihood for each event
           sequence.
     """
@@ -158,9 +160,12 @@ class EventSequenceRnnModel(mm.BaseModel):
     num_seqs = len(event_sequences)
     num_batches = int(np.ceil(num_seqs / float(batch_size)))
 
-    # Extract inputs and RNN states from the model states.
+    # Extract inputs, RNN states, and callback states from the model states.
     inputs = [model_state.inputs for model_state in model_states]
     initial_states = [model_state.rnn_state for model_state in model_states]
+    modify_events_callback_states = [
+        model_state.modify_events_callback_state
+        for model_state in model_states]
 
     final_states = []
     logliks = np.array(logliks, dtype=np.float32)
@@ -196,17 +201,28 @@ class EventSequenceRnnModel(mm.BaseModel):
 
     if modify_events_callback:
       # Modify event sequences and inputs for next step.
-      modify_events_callback(
-          self._config.encoder_decoder, event_sequences, next_inputs)
+      if any(state is not None for state in modify_events_callback_states):
+        modify_events_callback_states = modify_events_callback(
+            self._config.encoder_decoder, event_sequences, next_inputs,
+            modify_events_callback_states)
+      else:
+        modify_events_callback_states = modify_events_callback(
+            self._config.encoder_decoder, event_sequences, next_inputs)
+        if modify_events_callback_states is None:
+          modify_events_callback_states = [None] * len(event_sequences)
 
-    model_states = [ModelState(inputs=inputs, rnn_state=final_state)
-                    for inputs, final_state in zip(next_inputs, final_states)]
+    model_states = [ModelState(inputs=inputs, rnn_state=final_state,
+                               modify_events_callback_state=callback_state)
+                    for inputs, final_state, callback_state
+                    in zip(next_inputs, final_states,
+                           modify_events_callback_states)]
 
     return event_sequences, model_states, logliks
 
   def _generate_events(self, num_steps, primer_events, temperature=1.0,
                        beam_size=1, branch_factor=1, steps_per_iteration=1,
-                       control_events=None, modify_events_callback=None):
+                       control_events=None, modify_events_callback=None,
+                       modify_events_callback_initial_state=None):
     """Generate an event sequence from a primer sequence.
 
     Args:
@@ -230,6 +246,9 @@ class EventSequenceRnnModel(mm.BaseModel):
           None, will be called with 3 arguments after every event: the current
           EventSequenceEncoderDecoder, a list of current EventSequences, and a
           list of current encoded event inputs.
+      modify_events_callback_initial_state: The initial state for the optional
+          modify events callback. If None, the callback (if not None itself)
+          will not be passed any state.
 
     Returns:
       The generated event sequence (which begins with the provided primer).
@@ -271,9 +290,14 @@ class EventSequenceRnnModel(mm.BaseModel):
           event_sequences, full_length=True)
 
     if modify_events_callback:
-      # Modify event sequences and inputs for first step after primer.
-      modify_events_callback(
-          self._config.encoder_decoder, event_sequences, inputs)
+      # Modify event sequences and inputs for primer.
+      if modify_events_callback_initial_state is not None:
+        modify_events_callback_states = modify_events_callback(
+            self._config.encoder_decoder, event_sequences, inputs,
+            [modify_events_callback_initial_state])
+      else:
+        modify_events_callback_states = modify_events_callback(
+            self._config.encoder_decoder, event_sequences, inputs)
 
     graph_initial_state = self._session.graph.get_collection('initial_state')
     initial_states = state_util.unbatch(self._session.run(graph_initial_state))
@@ -281,7 +305,12 @@ class EventSequenceRnnModel(mm.BaseModel):
     # Beam search will maintain a state for each sequence consisting of the next
     # inputs to feed the model, and the current RNN state. We start out with the
     # initial full inputs batch and the zero state.
-    initial_state = ModelState(inputs=inputs[0], rnn_state=initial_states[0])
+    initial_state = ModelState(
+        inputs=inputs[0], rnn_state=initial_states[0],
+        modify_events_callback_state=(
+            modify_events_callback_states[0]
+            if modify_events_callback_initial_state is not None
+            else None))
 
     events, _, loglik = beam_search(
         initial_sequence=event_sequences[0],

@@ -13,6 +13,8 @@
 # limitations under the License.
 """Performance RNN generation code as a SequenceGenerator interface."""
 
+import collections
+import copy
 from functools import partial
 import math
 
@@ -21,13 +23,14 @@ import math
 import tensorflow as tf
 
 from magenta.models.performance_rnn import performance_lib
+from magenta.models.performance_rnn.performance_lib import PerformanceEvent
 from magenta.models.performance_rnn import performance_model
 
 import magenta.music as mm
 
 # This model can leave hanging notes. To avoid cacophony we turn off any note
-# after 5 seconds.
-MAX_NOTE_DURATION_SECONDS = 5.0
+# after 3 seconds.
+MAX_NOTE_DURATION_SECONDS = 3.0
 
 
 class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
@@ -136,6 +139,31 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
                 for name, value_fn in arg_types.items()
                 if name in generator_options.args)
 
+    # Inject the priming performance in the output of the generator, if
+    # requested. This option starts with no_ so that if it is unspecified (as
+    # will be the case when used with the MIDI interface), the default will be
+    # to inject the primer.
+    if not (generator_options.args[
+        'no_inject_primer_during_generation'].bool_value):
+      performance_to_inject = copy.deepcopy(performance)
+
+      args['modify_events_callback'] = partial(
+          _inject_performance, performance_to_inject)
+
+      # Initialize the state for the modify events callback.
+      args['modify_events_callback_initial_state'] = InjectPerformanceState(
+          index=0, num_steps_generated=0, num_steps_injected=0,
+          generation_velocity_bin=self.num_velocity_bins,
+          injection_velocity_bin=self.num_velocity_bins)
+
+      # If we're injecting the primer performance, we don't want to use it as a
+      # primer. Instead we'll use an empty performance.
+      performance = performance_lib.Performance(
+          steps_per_second=(
+              quantized_primer_sequence.quantization_info.steps_per_second),
+          start_step=generate_start_step,
+          num_velocity_bins=self.num_velocity_bins)
+
     total_steps = performance.num_steps + (
         generate_end_step - generate_start_step)
 
@@ -163,11 +191,147 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
     performance.set_length(total_steps)
 
-    generated_sequence = performance.to_sequence(
-        max_note_duration=self.max_note_duration)
+    if not generator_options.args[
+        'no_inject_primer_during_generation'].bool_value:
+      # Specify a base note sequence because the priming sequence was not
+      # included in the performance.
+      generated_sequence = performance.to_sequence(
+          max_note_duration=self.max_note_duration,
+          base_note_sequence=copy.deepcopy(primer_sequence))
+    else:
+      generated_sequence = performance.to_sequence(
+          max_note_duration=self.max_note_duration)
 
     assert (generated_sequence.total_time - generate_section.end_time) <= 1e-5
     return generated_sequence
+
+
+# State to maintain while injecting a performance into a generated performance.
+# Maintains the index of the next event to inject, the total number of (time)
+# steps generated, the total number of (time) steps injected, and the current
+# velocity in the performance to inject and generated performance.
+class InjectPerformanceState(object):
+
+  def __init__(self, index, num_steps_generated, num_steps_injected,
+               generation_velocity_bin, injection_velocity_bin):
+    self.index = index
+    self.num_steps_generated = num_steps_generated
+    self.num_steps_injected = num_steps_injected
+    self.generation_velocity_bin = generation_velocity_bin
+    self.injection_velocity_bin = injection_velocity_bin
+
+  def __str__(self):
+    return ('InjectPerformanceState(index=%d, num_steps_generated=%d, '
+            'num_steps_injected=%d, generation_velocity_bin=%d, '
+            'injection_velocity_bin=%d)' % (
+                self.index, self.num_steps_generated, self.num_steps_injected,
+                self.generation_velocity_bin, self.injection_velocity_bin))
+
+
+def _inject_performance(performance, encoder_decoder, event_sequences, inputs,
+                        states):
+  """A modify_events_callback method for generate_performance.
+
+  Should be called with functools.partial first, to fill in the performance and
+  start_step arguments.
+
+  Will extend the event sequence using events from the performance argument
+  TODO: when?
+  whenever the event sequence gets to a new step.
+
+  Args:
+    performance: The Performance to inject into the event sequence (also a
+        Performance).
+    encoder_decoder: Supplied by the callback. The current
+        EventSequenceEncoderDecoder.
+    event_sequences: Supplied by the callback. The current EventSequence.
+    inputs: Supplied by the callback. The current list of encoded events.
+    states: Supplied by the callback. A list of InjectPerformanceState tuples
+        containing the current index into the performance to inject, the number
+        of steps generated so far, and the number of steps injected so far (up
+        to the event at the current injection index).
+
+    Returns:
+      SKDJFLSKDJFLKJ
+  """
+  assert len(event_sequences) == len(inputs) == len(states)
+
+  for i in range(len(inputs)):
+    event_sequence = event_sequences[i]
+    input_ = inputs[i]
+    state = states[i]
+
+    # Fast-forward past any time shift and velocity events in the performance to
+    # inject, updating the injection state.
+    while state.index < len(performance) and (
+        performance[state.index].event_type == PerformanceEvent.TIME_SHIFT or
+        performance[state.index].event_type == PerformanceEvent.VELOCITY):
+      if performance[state.index].event_type == PerformanceEvent.TIME_SHIFT:
+        state.num_steps_injected += performance[state.index].event_value
+      else:
+        state.injection_velocity_bin = performance[state.index].event_value
+      state.index += 1
+
+    if state.index == len(performance):
+      # We have reached the end of the performance to inject. No need to modify
+      # anything, but update the generation state for correctness.
+      if event_sequence[-1].event_type == PerformanceEvent.TIME_SHIFT:
+        state.num_steps_generated += event_sequence[-1].event_value
+      elif event_sequence[-1].event_type == PerformanceEvent.VELOCITY:
+        state.generation_velocity_bin = event_sequence[-1].event_value
+      continue
+
+    if event_sequence[-1].event_type == PerformanceEvent.TIME_SHIFT:
+      if (state.num_steps_generated + event_sequence[-1].event_value >
+          state.num_steps_injected):
+        # The next generated event takes us past the current injection point.
+        input_.pop()
+        if state.num_steps_injected == state.num_steps_generated:
+          # Remove the time shift entirely and inject the next event.
+          event_sequence.pop()
+          event_sequence.append(performance[state.index])
+        else:
+          # Truncate the time shift and inject the next event.
+          event_sequence[-1].event_value = (
+              state.num_steps_injected - state.num_steps_generated)
+          input_.extend(encoder_decoder.get_inputs_batch([event_sequence])[0])
+          event_sequence.append(performance[state.index])
+        input_.extend(encoder_decoder.get_inputs_batch([event_sequence])[0])
+        state.num_steps_generated = state.num_steps_injected
+        state.index += 1
+      else:
+        state.num_steps_generated += event_sequence[-1].event_value
+
+    elif state.num_steps_generated == state.num_steps_injected:
+      if performance[state.index].event_type == PerformanceEvent.NOTE_OFF:
+        # Note-off events come first, so inject regardless of the generated
+        # event.
+        event_sequence.pop()
+        event_sequence.append(performance[state.index])
+        input_.pop()
+        input_.extend(encoder_decoder.get_inputs_batch([event_sequence])[0])
+        state.index += 1
+      elif (performance[state.index].event_type == PerformanceEvent.NOTE_ON and
+          event_sequence[-1].event_type != PerformanceEvent.NOTE_OFF):
+        # Inject the next note-on event, with a preceding velocity event if
+        # necessary.
+        event_sequence.pop()
+        input_.pop()
+        if state.injection_velocity_bin != state.generation_velocity_bin:
+          event_sequence.append(PerformanceEvent(
+              PerformanceEvent.VELOCITY, state.injection_velocity_bin))
+          input_.extend(encoder_decoder.get_inputs_batch([event_sequence])[0])
+          state.generation_velocity_bin = state.injection_velocity_bin
+        event_sequence.append(performance[state.index])
+        input_.extend(encoder_decoder.get_inputs_batch([event_sequence])[0])
+        state.index += 1
+
+    else:
+      # Generation has not yet caught up with the current injection state.
+      if event_sequence[-1].event_type == PerformanceEvent.VELOCITY:
+        state.generation_velocity_bin = event_sequence[-1].event_value
+
+  return states
 
 
 def get_generator_map():

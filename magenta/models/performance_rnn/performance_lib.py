@@ -16,6 +16,7 @@
 from __future__ import division
 
 import collections
+import copy
 import math
 
 # internal imports
@@ -209,6 +210,20 @@ class Performance(events_lib.EventSequence):
       raise ValueError('Invalid performance event: %s' % event)
     self._events.append(event)
 
+  def pop(self):
+    """Removes and returns the last event of the performance.
+
+    Returns:
+      The last event of this performance.
+
+    Raises:
+      IndexError: If this performance is empty.
+    """
+    if len(self) == 0:
+      raise IndexError('Cannot pop from empty Performance.')
+    event = self._events.pop()
+    return event
+
   def truncate(self, num_events):
     """Truncates this Performance to the specified number of events.
 
@@ -343,7 +358,8 @@ class Performance(events_lib.EventSequence):
                   velocity=100,
                   instrument=0,
                   program=0,
-                  max_note_duration=None):
+                  max_note_duration=None,
+                  base_note_sequence=None):
     """Converts the Performance to NoteSequence proto.
 
     Args:
@@ -354,6 +370,7 @@ class Performance(events_lib.EventSequence):
       program: MIDI program to give each note.
       max_note_duration: Maximum note duration in seconds to allow. Notes longer
           than this will be truncated. If None, notes can be any length.
+      base_note_sequence: A NoteSequence to use a starting point.
 
     Raises:
       ValueError: if an unknown event is encountered.
@@ -365,8 +382,11 @@ class Performance(events_lib.EventSequence):
 
     sequence_start_time = self.start_step * seconds_per_step
 
-    sequence = music_pb2.NoteSequence()
-    sequence.ticks_per_quarter = STANDARD_PPQ
+    if base_note_sequence:
+      sequence = copy.deepcopy(base_note_sequence)
+    else:
+      sequence = music_pb2.NoteSequence()
+      sequence.ticks_per_quarter = STANDARD_PPQ
 
     step = 0
 

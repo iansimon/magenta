@@ -77,6 +77,10 @@ tf.app.flags.DEFINE_string(
     'primer_midi', '',
     'The path to a MIDI file containing a polyphonic track that will be used '
     'as a priming track.')
+tf.app.flags.DEFINE_boolean(
+    'inject_primer', False,
+    'If False, the generated sequence will begin with the primer. If True, the '
+    'primer will be injected into the performance as it is generated.')
 tf.app.flags.DEFINE_float(
     'temperature', 1.0,
     'The randomness of the generated tracks. 1.0 uses the unaltered '
@@ -174,6 +178,9 @@ def run_with_flags(generator):
   # Derive the total number of seconds to generate.
   seconds_per_step = 1.0 / generator.steps_per_second
   generate_end_time = FLAGS.num_steps * seconds_per_step
+  if FLAGS.inject_primer:
+    # Generate the requested number of steps _after_ the primer.
+    generate_end_time += primer_sequence.total_time
 
   # Specify start/stop time for generation based on starting generation at the
   # end of the priming sequence and continuing until the sequence is num_steps
@@ -197,6 +204,9 @@ def run_with_flags(generator):
   generator_options.args['branch_factor'].int_value = FLAGS.branch_factor
   generator_options.args[
       'steps_per_iteration'].int_value = FLAGS.steps_per_iteration
+
+  generator_options.args['no_inject_primer_during_generation'].bool_value = (
+      not FLAGS.inject_primer)
 
   tf.logging.debug('primer_sequence: %s', primer_sequence)
   tf.logging.debug('generator_options: %s', generator_options)

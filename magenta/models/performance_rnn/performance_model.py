@@ -27,7 +27,8 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
 
   def generate_performance(
       self, num_steps, primer_sequence, temperature=1.0, beam_size=1,
-      branch_factor=1, steps_per_iteration=1):
+      branch_factor=1, steps_per_iteration=1, modify_events_callback=None,
+      modify_events_callback_initial_state=None):
     """Generate a performance track from a primer performance track.
 
     Args:
@@ -42,13 +43,24 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
       branch_factor: An integer, beam search branch factor to use.
       steps_per_iteration: An integer, number of steps to take per beam search
           iteration.
+      modify_events_callback: An optional callback for modifying the event list.
+          Can be used to inject events rather than having them generated. If not
+          None, will be called with 4 arguments after every event: the current
+          encoder/decoder, a list of current Performances, a list of current
+          encoded inputs, and a list of callback states.
+      modify_events_callback_initial_state: The initial state for the optional
+          modify events callback. If None, the callback (if not None itself)
+          will not be passed any state.
 
     Returns:
       The generated Performance object (which begins with the provided primer
       track).
     """
-    return self._generate_events(num_steps, primer_sequence, temperature,
-                                 beam_size, branch_factor, steps_per_iteration)
+    return self._generate_events(
+        num_steps, primer_sequence, temperature, beam_size, branch_factor,
+        steps_per_iteration, modify_events_callback=modify_events_callback,
+        modify_events_callback_initial_state=(
+            modify_events_callback_initial_state))
 
   def performance_log_likelihood(self, sequence):
     """Evaluate the log likelihood of a performance.
