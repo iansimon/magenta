@@ -303,7 +303,7 @@ class EventSequenceRnnModel(mm.BaseModel):
     if control_events is not None:
       # We are conditioning on a control sequence.
       inputs = self._config.encoder_decoder.get_inputs_batch(
-          control_events, event_sequences, full_length=True)
+          [control_events] * beam_size, event_sequences, full_length=True)
     else:
       inputs = self._config.encoder_decoder.get_inputs_batch(
           event_sequences, full_length=True)
@@ -327,7 +327,7 @@ class EventSequenceRnnModel(mm.BaseModel):
       if control_events is not None:
         # We are conditioning on a control sequence.
         inputs = self._config.encoder_decoder.get_inputs_batch(
-            control_events, event_sequences)
+            [control_events] * beam_size, event_sequences)
       else:
         inputs = self._config.encoder_decoder.get_inputs_batch(event_sequences)
 
@@ -478,7 +478,8 @@ class EventSequenceRnnModel(mm.BaseModel):
     if control_events is not None:
       # We are conditioning on a control sequence.
       inputs = self._config.encoder_decoder.get_inputs_batch(
-          control_events, [events[:-1] for events in event_sequences],
+          [control_events] * len(event_sequences),
+          [events[:-1] for events in event_sequences],
           full_length=True)
     else:
       inputs = self._config.encoder_decoder.get_inputs_batch(
