@@ -21,9 +21,8 @@ import functools
 import tensorflow as tf
 import magenta
 
-from magenta.models.performance_rnn import performance_encoder_decoder
-from magenta.models.performance_rnn.performance_lib import PerformanceEvent
 from magenta.models.shared import events_rnn_model
+from magenta.music import PerformanceEvent
 
 
 # State for constructing a time-varying control sequence. Keeps track of the
@@ -194,7 +193,7 @@ default_configs = {
             id='performance',
             description='Performance RNN'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
-            performance_encoder_decoder.PerformanceOneHotEncoding()),
+            magenta.music.PerformanceOneHotEncoding()),
         tf.contrib.training.HParams(
             batch_size=64,
             rnn_layer_sizes=[512, 512, 512],
@@ -207,7 +206,7 @@ default_configs = {
             id='performance_with_dynamics',
             description='Performance RNN with dynamics'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
-            performance_encoder_decoder.PerformanceOneHotEncoding(
+            magenta.music.PerformanceOneHotEncoding(
                 num_velocity_bins=32)),
         tf.contrib.training.HParams(
             batch_size=64,
@@ -223,10 +222,10 @@ default_configs = {
             description='Note-density-conditioned Performance RNN + dynamics'),
         magenta.music.ConditionalEventSequenceEncoderDecoder(
             magenta.music.OneHotEventSequenceEncoderDecoder(
-                performance_encoder_decoder.NoteDensityOneHotEncoding(
+                magenta.music.NoteDensityOneHotEncoding(
                     density_bin_ranges=[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0])),
             magenta.music.OneHotEventSequenceEncoderDecoder(
-                performance_encoder_decoder.PerformanceOneHotEncoding(
+                magenta.music.PerformanceOneHotEncoding(
                     num_velocity_bins=32))),
         tf.contrib.training.HParams(
             batch_size=64,
@@ -243,9 +242,9 @@ default_configs = {
             id='pitch_conditioned_performance_with_dynamics',
             description='Pitch-histogram-conditioned Performance RNN'),
         magenta.music.ConditionalEventSequenceEncoderDecoder(
-            performance_encoder_decoder.PitchHistogramEncoderDecoder(),
+            magenta.music.PitchHistogramEncoderDecoder(),
             magenta.music.OneHotEventSequenceEncoderDecoder(
-                performance_encoder_decoder.PerformanceOneHotEncoding(
+                magenta.music.PerformanceOneHotEncoding(
                     num_velocity_bins=32))),
         tf.contrib.training.HParams(
             batch_size=64,
@@ -263,12 +262,12 @@ default_configs = {
         magenta.music.ConditionalEventSequenceEncoderDecoder(
             magenta.music.MultipleEventSequenceEncoder([
                 magenta.music.OneHotEventSequenceEncoderDecoder(
-                    performance_encoder_decoder.NoteDensityOneHotEncoding(
+                    magenta.music.NoteDensityOneHotEncoding(
                         density_bin_ranges=[
                             1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0])),
-                performance_encoder_decoder.PitchHistogramEncoderDecoder()]),
+                magenta.music.PitchHistogramEncoderDecoder()]),
             magenta.music.OneHotEventSequenceEncoderDecoder(
-                performance_encoder_decoder.PerformanceOneHotEncoding(
+                magenta.music.PerformanceOneHotEncoding(
                     num_velocity_bins=32))),
         tf.contrib.training.HParams(
             batch_size=64,

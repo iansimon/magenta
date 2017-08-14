@@ -17,10 +17,10 @@ from __future__ import division
 
 # internal imports
 
-from magenta.models.performance_rnn import performance_lib
-from magenta.models.performance_rnn.performance_lib import PerformanceEvent
 from magenta.music import constants
 from magenta.music import encoder_decoder
+from magenta.music import performance_lib
+from magenta.music.performance_lib import PerformanceEvent
 
 NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
 
@@ -38,17 +38,22 @@ EVENT_RANGES = [
 class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
   """One-hot encoding for performance events."""
 
-  def __init__(self, num_velocity_bins=0):
+  def __init__(self, num_velocity_bins=0, enable_wait=False):
     if num_velocity_bins > 0:
       self._event_ranges = EVENT_RANGES + [
           (PerformanceEvent.VELOCITY, 1, num_velocity_bins)]
     else:
       self._event_ranges = EVENT_RANGES
+    self._enable_wait = enable_wait
 
   @property
   def num_classes(self):
-    return sum(max_value - min_value + 1
-               for event_type, min_value, max_value in self._event_ranges)
+    result = sum(max_value - min_value + 1
+                 for event_type, min_value, max_value in self._event_ranges)
+    if self._enable_wait:
+      return result + 1
+    else:
+      return result
 
   @property
   def default_event(self):
@@ -63,7 +68,10 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
         return offset + event.event_value - min_value
       offset += max_value - min_value + 1
 
-    raise ValueError('Unknown event type: %s' % event.event_type)
+    if self._enable_wait and event.event_type == PerformanceEvent.WAIT:
+      return offset
+    else:
+      raise ValueError('Unknown event type: %s' % event.event_type)
 
   def decode_event(self, index):
     offset = 0
@@ -73,7 +81,10 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
             event_type=event_type, event_value=min_value + index - offset)
       offset += max_value - min_value + 1
 
-    raise ValueError('Unknown event index: %s' % index)
+    if self._enable_wait and index == offset:
+      return PerformanceEvent(PerformanceEvent.WAIT, None)
+    else:
+      raise ValueError('Unknown event index: %s' % index)
 
 
 class NoteDensityOneHotEncoding(encoder_decoder.OneHotEncoding):

@@ -23,8 +23,8 @@ import math
 
 import tensorflow as tf
 
-from magenta.models.performance_rnn import performance_lib
 from magenta.models.performance_rnn import performance_model
+from magenta.music import performance_lib
 
 import magenta.music as mm
 
