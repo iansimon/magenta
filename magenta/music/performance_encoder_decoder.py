@@ -57,9 +57,13 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
 
   @property
   def default_event(self):
-    return PerformanceEvent(
-        event_type=PerformanceEvent.TIME_SHIFT,
-        event_value=performance_lib.MAX_SHIFT_STEPS)
+    if self._enable_wait:
+      return PerformanceEvent(
+          event_type=PerformanceEvent.WAIT, event_value=None)
+    else:
+      return PerformanceEvent(
+          event_type=PerformanceEvent.TIME_SHIFT,
+          event_value=performance_lib.MAX_SHIFT_STEPS)
 
   def encode_event(self, event):
     offset = 0

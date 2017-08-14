@@ -58,7 +58,7 @@ class PerformanceEvent(object):
   WAIT = 5
 
   def __init__(self, event_type, event_value=None):
-    if not PerformanceEvent.NOTE_ON <= event_type <= PerformanceEvent.VELOCITY:
+    if not PerformanceEvent.NOTE_ON <= event_type <= PerformanceEvent.WAIT:
       raise ValueError('Invalid event type: %s' % event_type)
 
     if (event_type == PerformanceEvent.NOTE_ON or
