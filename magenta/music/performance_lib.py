@@ -297,7 +297,7 @@ class Performance(events_lib.EventSequence):
     """
     notes = [note for note in quantized_sequence.notes
              if not note.is_drum and note.quantized_start_step >= start_step]
-    sorted_notes = sorted(notes, key=lambda note: note.start_time)
+    sorted_notes = sorted(notes, key=lambda note: (note.start_time, note.pitch))
 
     # Sort all note start and end events.
     onsets = [(note.quantized_start_step, idx, False)
