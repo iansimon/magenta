@@ -28,30 +28,6 @@ py_library(
 )
 
 py_library(
-    name = "performance_lib",
-    srcs = ["performance_lib.py"],
-    srcs_version = "PY2AND3",
-    visibility = [
-        # internal model:discrete_music_gan
-    ],
-    deps = [
-        "//magenta",
-        # tensorflow dep
-    ],
-)
-
-py_test(
-    name = "performance_lib_test",
-    srcs = ["performance_lib_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":performance_lib",
-        "//magenta",
-        # tensorflow dep
-    ],
-)
-
-py_library(
     name = "performance_model",
     srcs = ["performance_model.py"],
     srcs_version = "PY2AND3",
