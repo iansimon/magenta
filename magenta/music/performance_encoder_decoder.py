@@ -38,28 +38,32 @@ EVENT_RANGES = [
 class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
   """One-hot encoding for performance events."""
 
-  def __init__(self, num_velocity_bins=0, enable_wait=False):
+  def __init__(self, num_velocity_bins=0, score_mode=False):
     if num_velocity_bins > 0:
       self._event_ranges = EVENT_RANGES + [
           (PerformanceEvent.VELOCITY, 1, num_velocity_bins)]
     else:
       self._event_ranges = EVENT_RANGES
-    self._enable_wait = enable_wait
+    if score_mode:
+      # No note on or off events, but we now have rewind (and next) events.
+      self._event_ranges = self._event_ranges[2:] + [
+          (PerformanceEvent.REWIND, 1, performance_lib.MAX_SHIFT_STEPS)]
+    self._score_mode = score_mode
 
   @property
   def num_classes(self):
     result = sum(max_value - min_value + 1
                  for event_type, min_value, max_value in self._event_ranges)
-    if self._enable_wait:
+    if self._score_mode:
       return result + 1
     else:
       return result
 
   @property
   def default_event(self):
-    if self._enable_wait:
+    if self._score_mode:
       return PerformanceEvent(
-          event_type=PerformanceEvent.WAIT, event_value=None)
+          event_type=PerformanceEvent.NEXT, event_value=None)
     else:
       return PerformanceEvent(
           event_type=PerformanceEvent.TIME_SHIFT,
@@ -72,7 +76,7 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
         return offset + event.event_value - min_value
       offset += max_value - min_value + 1
 
-    if self._enable_wait and event.event_type == PerformanceEvent.WAIT:
+    if self._score_mode and event.event_type == PerformanceEvent.NEXT:
       return offset
     else:
       raise ValueError('Unknown event type: %s' % event.event_type)
@@ -85,8 +89,8 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
             event_type=event_type, event_value=min_value + index - offset)
       offset += max_value - min_value + 1
 
-    if self._enable_wait and index == offset:
-      return PerformanceEvent(PerformanceEvent.WAIT, None)
+    if self._score_mode and index == offset:
+      return PerformanceEvent(PerformanceEvent.NEXT, None)
     else:
       raise ValueError('Unknown event index: %s' % index)
 

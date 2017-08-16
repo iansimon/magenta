@@ -54,11 +54,13 @@ class PerformanceEvent(object):
   TIME_SHIFT = 3
   # Change current velocity.
   VELOCITY = 4
-  # Do nothing (used for aligned performances).
-  WAIT = 5
+  # Shift time backward.
+  REWIND = 5
+  # Consume a score event.
+  NEXT = 6
 
   def __init__(self, event_type, event_value=None):
-    if not PerformanceEvent.NOTE_ON <= event_type <= PerformanceEvent.WAIT:
+    if not PerformanceEvent.NOTE_ON <= event_type <= PerformanceEvent.NEXT:
       raise ValueError('Invalid event type: %s' % event_type)
 
     if (event_type == PerformanceEvent.NOTE_ON or
@@ -71,9 +73,12 @@ class PerformanceEvent(object):
     elif event_type == PerformanceEvent.VELOCITY:
       if not 1 <= event_value <= MAX_NUM_VELOCITY_BINS:
         raise ValueError('Invalid velocity value: %s' % event_value)
-    elif event_type == PerformanceEvent.WAIT:
+    elif event_type == PerformanceEvent.REWIND:
+      if not 1 <= event_value <= MAX_SHIFT_STEPS:
+        raise ValueError('Invalid rewind value: %s' % event_value)
+    elif event_type == PerformanceEvent.NEXT:
       if event_value is not None:
-        raise ValueError('Invalid wait value (must be None): %s' % event_value)
+        raise ValueError('Invalid next value (must be None): %s' % event_value)
 
     self.event_type = event_type
     self.event_value = event_value
@@ -253,8 +258,10 @@ class Performance(events_lib.EventSequence):
         strs.append('(%s, SHIFT)' % event.event_value)
       elif event.event_type == PerformanceEvent.VELOCITY:
         strs.append('(%s, VELOCITY)' % event.event_value)
-      elif event.event_type == PerformanceEvent.WAIT:
-        strs.append('(WAIT)')
+      elif event.event_type == PerformanceEvent.REWIND:
+        strs.append('(%s, REWIND)' % event.event_value)
+      elif event.event_type == PerformanceEvent.NEXT:
+        strs.append('(NEXT)')
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
     return '\n'.join(strs)
@@ -274,6 +281,8 @@ class Performance(events_lib.EventSequence):
     for event in self:
       if event.event_type == PerformanceEvent.TIME_SHIFT:
         steps += event.event_value
+      elif event.event_type == PerformanceEvent.REWIND:
+        steps -= event.event_value
     return steps
 
   @staticmethod
@@ -424,8 +433,10 @@ class Performance(events_lib.EventSequence):
         assert self._num_velocity_bins
         velocity = (
             MIN_MIDI_VELOCITY + (event.event_value - 1) * velocity_bin_size)
-      elif event.event_type == PerformanceEvent.WAIT:
-        # Ignore wait events here.
+      elif event.event_type == PerformanceEvent.REWIND:
+        step -= event.event_value
+      elif event.event_type == PerformanceEvent.NEXT:
+        # Ignore next events here.
         pass
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
