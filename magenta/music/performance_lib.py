@@ -410,14 +410,17 @@ class Performance(events_lib.EventSequence):
               event.event_value][0]
           pitch_start_steps_and_velocities[event.event_value] = (
               pitch_start_steps_and_velocities[event.event_value][1:])
-          if step == pitch_start_step:
+          if step <= pitch_start_step:
             tf.logging.debug(
-                'Ignoring note with zero duration at step %d' % step)
-            continue
+                'Note starting at step %d has non-positive duration',
+                pitch_start_step)
+            end_step = pitch_start_step + 1
+          else:
+            end_step = step
           note = sequence.notes.add()
           note.start_time = (pitch_start_step * seconds_per_step +
                              sequence_start_time)
-          note.end_time = step * seconds_per_step + sequence_start_time
+          note.end_time = end_step * seconds_per_step + sequence_start_time
           if (max_note_duration and
               note.end_time - note.start_time > max_note_duration):
             note.end_time = note.start_time + max_note_duration
@@ -446,14 +449,17 @@ class Performance(events_lib.EventSequence):
     for pitch in pitch_start_steps_and_velocities:
       for pitch_start_step, pitch_velocity in pitch_start_steps_and_velocities[
           pitch]:
-        if step == pitch_start_step:
+        if step <= pitch_start_step:
           tf.logging.debug(
-              'Ignoring note with zero duration at step %d' % step)
-          continue
+              'Note starting at step %d has non-positive duration',
+              pitch_start_step)
+          end_step = pitch_start_step + 1
+        else:
+          end_step = step
         note = sequence.notes.add()
         note.start_time = (pitch_start_step * seconds_per_step +
                            sequence_start_time)
-        note.end_time = step * seconds_per_step + sequence_start_time
+        note.end_time = end_step * seconds_per_step + sequence_start_time
         if (max_note_duration and
             note.end_time - note.start_time > max_note_duration):
           note.end_time = note.start_time + max_note_duration
