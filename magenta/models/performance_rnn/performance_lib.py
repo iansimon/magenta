@@ -582,6 +582,76 @@ def performance_pitch_histogram_sequence(performance, window_size_seconds,
   return histogram_sequence
 
 
+def performance_beat_strength_sequence(performance, window_size_seconds):
+  """Computes local beat strength vector at every event in a performance.
+
+  Here a beat strength vector is a vector, indexed by step, of the strength
+  Args:
+    performance: A Performance object for which to compute a beat strength
+        vector sequence.
+    window_size_seconds: The size of the window, in seconds, over which to
+        compute beat strength.
+
+  Returns:
+    A list of beat strength vectors the same length as `performance`, where each
+    beat strength vector is a list of float values summing to one.
+  """
+  window_size_steps = int(round(
+      window_size_seconds * performance.steps_per_second))
+
+  prev_event_type = None
+  prev_beat_strength = [1.0 / window_size_steps] * window_size_steps
+
+  base_velocity = 1
+  beat_strength_sequence = []
+
+  for i, event in enumerate(performance):
+    # Maintain the base velocity.
+    if event.event_type == PerformanceEvent.VELOCITY:
+      base_velocity = event.event_value
+
+    if (prev_event_type is not None and
+        prev_event_type != PerformanceEvent.TIME_SHIFT):
+      # The previous event didn't move us forward in time, so the beat strength
+      # vector here should be the same.
+      beat_strength_sequence.append(prev_beat_strength)
+      prev_event_type = event.event_type
+      continue
+
+    j = i
+    step_offset = 0
+
+    velocity = base_velocity
+    step_counts = [0.0] * window_size_steps
+
+    # Count the total velocity at each step within the window.
+    while step_offset < window_size_steps and j < len(performance):
+      if performance[j].event_type == PerformanceEvent.NOTE_ON:
+        weights = [1, 2, 1]
+        for k, w in zip([-1, 0, 1], weights):
+          if step_offset + k >= 0 and step_offset + k < window_size_steps:
+            step_counts[step_offset + k] += w * math.sqrt(velocity)
+      elif performance[j].event_type == PerformanceEvent.TIME_SHIFT:
+        step_offset += performance[j].event_value
+      elif performance[j].event_type == PerformanceEvent.VELOCITY:
+        velocity = performance[j].event_value
+      j += 1
+
+    # Normalize by the total weight.
+    total = sum(step_counts)
+    if total > 0:
+      beat_strength = [count / total for count in step_counts]
+    else:
+      beat_strength = [1.0 / window_size_steps] * window_size_steps
+
+    beat_strength_sequence.append(beat_strength)
+
+    prev_event_type = event.event_type
+    prev_beat_strength = beat_strength
+
+  return beat_strength_sequence
+
+
 def extract_performances(
     quantized_sequence, start_step=0, min_events_discard=None,
     max_events_truncate=None, num_velocity_bins=0):

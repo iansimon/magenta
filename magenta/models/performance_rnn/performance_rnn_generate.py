@@ -92,6 +92,10 @@ tf.app.flags.DEFINE_string(
     'sum to one. Similar to `notes_per_second`, this can also be a list of '
     'pitch class histograms.')
 tf.app.flags.DEFINE_float(
+    'bpm', None,
+    'When conditioning on beat strength, the beats per minute to play '
+    'generated output at.')
+tf.app.flags.DEFINE_float(
     'temperature', 1.0,
     'The randomness of the generated tracks. 1.0 uses the unaltered '
     'softmax probabilities, greater than 1.0 makes tracks more random, less '
@@ -220,11 +224,19 @@ def run_with_flags(generator):
         'to condition on pitch class histogram. Requested pitch class '
         'histogram will be ignored: %s', FLAGS.pitch_class_histogram)
 
+  if (FLAGS.bpm is not None and not generator.beat_strength_conditioning):
+    tf.logging.warning(
+        'BPM (tempo) requested via flag, but generator is not set up to '
+        'condition on beat strength. Requested BPM will be ignored: %s',
+        FLAGS.bpm)
+
   if FLAGS.notes_per_second is not None:
     generator_options.args['note_density'].byte_value = FLAGS.notes_per_second
   if FLAGS.pitch_class_histogram is not None:
     generator_options.args['pitch_histogram'].byte_value = (
         FLAGS.pitch_class_histogram)
+  if FLAGS.bpm is not None:
+    generator_options.args['bpm'].float_value = FLAGS.bpm
 
   generator_options.args['temperature'].float_value = FLAGS.temperature
   generator_options.args['beam_size'].int_value = FLAGS.beam_size
@@ -271,6 +283,9 @@ def main(unused_argv):
       note_density_conditioning=config.density_bin_ranges is not None,
       pitch_histogram_conditioning=(
           config.pitch_histogram_window_size is not None),
+      beat_strength_conditioning=config.beat_strength_window_size is not None,
+      beat_strength_window_size_steps=int(round(
+          config.beat_strength_window_size * config.steps_per_second)),
       checkpoint=get_checkpoint(),
       bundle=bundle)
 

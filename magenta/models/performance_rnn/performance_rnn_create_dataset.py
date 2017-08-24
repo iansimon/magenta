@@ -69,6 +69,7 @@ class EncoderPipeline(pipeline.Pipeline):
     self._density_bin_ranges = config.density_bin_ranges
     self._density_window_size = config.density_window_size
     self._pitch_histogram_window_size = config.pitch_histogram_window_size
+    self._beat_strength_window_size = config.beat_strength_window_size
 
   def transform(self, performance):
     if (self._density_bin_ranges is not None and
@@ -90,6 +91,11 @@ class EncoderPipeline(pipeline.Pipeline):
       histogram_sequence = performance_lib.performance_pitch_histogram_sequence(
           performance, self._pitch_histogram_window_size)
       encoded = self._encoder_decoder.encode(histogram_sequence, performance)
+    elif self._beat_strength_window_size is not None:
+      # Encode conditional on beat strength vector.
+      beat_strength_sequence = performance_lib.performance_beat_strength_sequence(
+          performance, self._beat_strength_window_size)
+      encoded = self._encoder_decoder.encode(beat_strength_sequence, performance)
     else:
       # Encode unconditional.
       encoded = self._encoder_decoder.encode(performance)

@@ -41,6 +41,9 @@ DEFAULT_PITCH_HISTOGRAM = [
     0.125, 0.025, 0.125, 0.025, 0.125, 0.125,
     0.025, 0.125, 0.025, 0.125, 0.025, 0.125]
 
+# Default BPM to use when conditioning on beat strength.
+DEFAULT_BPM = 120.0
+
 
 class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
   """Performance RNN generation code as a SequenceGenerator interface."""
@@ -49,6 +52,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
                steps_per_second=performance_lib.DEFAULT_STEPS_PER_SECOND,
                num_velocity_bins=0, note_density_conditioning=False,
                pitch_histogram_conditioning=False,
+               beat_strength_conditioning=False,
+               beat_strength_window_size_steps=None,
                max_note_duration=MAX_NOTE_DURATION_SECONDS,
                fill_generate_section=True, checkpoint=None, bundle=None):
     """Creates a PerformanceRnnSequenceGenerator.
@@ -62,6 +67,10 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       note_density_conditioning: If True, generate conditional on note density.
       pitch_histogram_conditioning: If True, generate conditional on pitch class
           histogram.
+      beat_strength_conditioning: If True, generate conditional on beat strength
+          vectors.
+      beat_strength_window_size_steps: Size of beat strength window in steps, if
+          conditioning on beat strength.
       max_note_duration: The maximum note duration in seconds to allow during
           generation. This model often forgets to release notes; specifying a
           maximum duration can force it to do so.
@@ -84,6 +93,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
     self.num_velocity_bins = num_velocity_bins
     self.note_density_conditioning = note_density_conditioning
     self.pitch_histogram_conditioning = pitch_histogram_conditioning
+    self.beat_strength_conditioning = beat_strength_conditioning
+    self.beat_strength_window_size_steps = beat_strength_window_size_steps
     self.max_note_duration = max_note_duration
     self.fill_generate_section = fill_generate_section
 
@@ -152,6 +163,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
     arg_types = {
         'note_density': lambda arg: ast.literal_eval(arg.byte_value),
         'pitch_histogram': lambda arg: ast.literal_eval(arg.byte_value),
+        'bpm': lambda arg: arg.float_value,
         'temperature': lambda arg: arg.float_value,
         'beam_size': lambda arg: arg.int_value,
         'branch_factor': lambda arg: arg.int_value,
@@ -183,6 +195,18 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
           'Conditioning on pitch histogram but none requested, using default.')
       args['pitch_histogram'] = [DEFAULT_PITCH_HISTOGRAM]
 
+    # Make sure BPM is present when conditioning on beat strength and not
+    # present otherwise.
+    if not self.beat_strength_conditioning and 'bpm' in args:
+      tf.logging.warning(
+          'Not conditioning on beat strength, ignoring requested BPM.')
+      del args['bpm']
+    if self.beat_strength_conditioning and 'bpm' not in args:
+      tf.logging.warning(
+          'Conditioning on beat strength but none requested, using default.')
+      args['bpm'] = [DEFAULT_BPM]
+
+    input_sequence.tempos.add().qpm = qpm
     # If a single note density or pitch class histogram is present, convert to
     # list to simplify further processing.
     if (self.note_density_conditioning and
@@ -203,6 +227,11 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
           tf.logging.warning('Pitch histogram is empty, using default.')
           args['pitch_histogram'][i] = DEFAULT_PITCH_HISTOGRAM
 
+    if 'bpm' in args:
+      qpm = args['bpm']
+    else:
+      qpm = None
+
     total_steps = performance.num_steps + (
         generate_end_step - generate_start_step)
 
@@ -222,6 +251,13 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
           num_steps=total_steps,
           pitch_histograms=args['pitch_histogram'])
       del args['pitch_histogram']
+    if self.beat_strength_conditioning:
+      args['beat_strength_fn'] = partial(
+          _step_to_beat_strength,
+          steps_per_second=self.steps_per_second,
+          window_size_steps=self.beat_strength_window_size_steps,
+          bpm=args['bpm'])
+      del args['bpm']
 
     if not performance:
       # Primer is empty; let's just start with silence.
@@ -251,6 +287,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
     generated_sequence = performance.to_sequence(
         max_note_duration=self.max_note_duration)
 
+    generated_sequence.tempos.add().qpm = qpm
+
     assert (generated_sequence.total_time - generate_section.end_time) <= 1e-5
     return generated_sequence
 
@@ -272,6 +310,30 @@ def _step_to_pitch_histogram(step, num_steps, pitch_histograms):
   return pitch_histograms[index]
 
 
+def _step_to_beat_strength(step, steps_per_second, window_size_steps, bpm,
+                           beat_divisions=[3], beat_multiples=[2, 4]):
+  """Map step in performance to beat strength vector."""
+  beat_strength = [0.0] * window_size_steps
+  steps_per_beat = 60.0 * steps_per_second / bpm
+
+  beats_per_unit = [1] + beat_multiples + [1.0 / x for x in beat_divisions]
+
+  for bpu in beats_per_unit:
+    steps_per_unit = steps_per_beat * bpu
+    start_unit = step / steps_per_unit
+    unit_offset = int(math.ceil(start_unit)) - start_unit
+    unit = 0
+    while True:
+      idx = int(round((unit + unit_offset) * steps_per_unit))
+      if idx >= window_size_steps:
+        break
+      beat_strength[idx] += 1.0
+      unit += 1
+
+  total = sum(beat_strength)
+  return [count / total for count in beat_strength]
+
+
 def get_generator_map():
   """Returns a map from the generator ID to a SequenceGenerator class creator.
 
@@ -290,6 +352,9 @@ def get_generator_map():
         note_density_conditioning=config.density_bin_ranges is not None,
         pitch_histogram_conditioning=(
             config.pitch_histogram_window_size is not None),
+        beat_strength_conditioning=config.beat_strength_window_size is not None,
+        beat_strength_window_size_steps=int(round(
+            config.beat_strength_window_size * config.steps_per_second)),
         fill_generate_section=False,
         **kwargs)
 

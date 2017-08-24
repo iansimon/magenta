@@ -39,7 +39,7 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
   def generate_performance(
       self, num_steps, primer_sequence, temperature=1.0, beam_size=1,
       branch_factor=1, steps_per_iteration=1, note_density_fn=None,
-      pitch_histogram_fn=None):
+      pitch_histogram_fn=None, beat_strength_fn=None):
     """Generate a performance track from a primer performance track.
 
     Args:
@@ -58,22 +58,31 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
           or None if not conditioning on note density.
       pitch_histogram_fn: A function that maps time step to desired pitch
           histogram, or None if not conditioning on pitch histogram.
+      beat_strength_fn: A function that maps time step to desired beat strength
+          vector, or None if not conditioning on beat strength.
 
     Returns:
       The generated Performance object (which begins with the provided primer
       track).
     """
-    if note_density_fn is not None or pitch_histogram_fn is not None:
-      if note_density_fn is not None and pitch_histogram_fn is not None:
-        control_events = [(note_density_fn(0), pitch_histogram_fn(0))]
-      elif note_density_fn is not None:
-        control_events = [note_density_fn(0)]
-      elif pitch_histogram_fn is not None:
-        control_events = [pitch_histogram_fn(0)]
+    if (note_density_fn is not None or
+        pitch_histogram_fn is not None or
+        beat_strength_fn is not None):
+      control_events = ()
+      if note_density_fn is not None:
+        control_events += (note_density_fn(0),)
+      if pitch_histogram_fn is not None:
+        control_events += (pitch_histogram_fn(0),)
+      if beat_strength_fn is not None:
+        control_events += (beat_strength_fn(0),)
+      if len(control_events) == 1:
+        control_events = control_events[0]
+      control_events = [control_events]
       control_state = PerformanceControlState(
           current_perf_index=0, current_perf_step=0)
       extend_control_events_callback = functools.partial(
-          _extend_control_events, note_density_fn, pitch_histogram_fn)
+          _extend_control_events, note_density_fn, pitch_histogram_fn,
+          beat_strength_fn)
     else:
       control_events = None
       control_state = None
@@ -94,7 +103,7 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
       note_density: Control note density on which performance is conditioned. If
           None, don't condition on note density.
       pitch_histogram: Control pitch class histogram on which performance is
-          conditioned. If None, don't condition on pitch class histogram
+          conditioned. If None, don't condition on pitch class histogram.
 
     Returns:
       The log likelihood of `sequence` under this model.
@@ -116,8 +125,9 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
         [sequence], control_events=control_events)[0]
 
 
-def _extend_control_events(note_density_fn, pitch_histogram_fn, control_events,
-                           performance, control_state):
+def _extend_control_events(note_density_fn, pitch_histogram_fn,
+                           beat_strength_fn, control_events, performance,
+                           control_state):
   """Extend a performance control sequence.
 
   Extends `control_events` -- a sequence of note densities, pitch class
@@ -132,6 +142,8 @@ def _extend_control_events(note_density_fn, pitch_histogram_fn, control_events,
           not conditioning on note density.
     pitch_histogram_fn: A function that maps time step to pitch histogram, or
           None if not conditioning on pitch histogram.
+    beat_strength_fn: A function that maps time step to beat strength vector, or
+          None if not conditioning on beat strength.
     control_events: The control sequence to extend.
     performance: The Performance being generated.
     control_state: A PerformanceControlState tuple containing the current
@@ -157,6 +169,8 @@ def _extend_control_events(note_density_fn, pitch_histogram_fn, control_events,
       control_events.append(note_density_fn(step))
     elif pitch_histogram_fn is not None:
       control_events.append(pitch_histogram_fn(step))
+    elif beat_strength_fn is not None:
+      control_events.append(beat_strength_fn(step))
 
   return PerformanceControlState(
       current_perf_index=idx, current_perf_step=step)
@@ -175,17 +189,21 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
         seconds.
     pitch_histogram_window_size: Size of window used to compute pitch class
         histograms, in seconds. If None, don't compute pitch class histograms.
+    beat_strength_window_size: Size of window used to compute beat strength, in
+        seconds. If None, don't compute beat strength.
   """
 
   def __init__(self, details, encoder_decoder, hparams, num_velocity_bins=0,
                density_bin_ranges=None, density_window_size=3.0,
-               pitch_histogram_window_size=None):
+               pitch_histogram_window_size=None,
+               beat_strength_window_size=None):
     super(PerformanceRnnConfig, self).__init__(
         details, encoder_decoder, hparams)
     self.num_velocity_bins = num_velocity_bins
     self.density_bin_ranges = density_bin_ranges
     self.density_window_size = density_window_size
     self.pitch_histogram_window_size = pitch_histogram_window_size
+    self.beat_strength_window_size = beat_strength_window_size
 
 
 default_configs = {
@@ -255,6 +273,25 @@ default_configs = {
             learning_rate=0.001),
         num_velocity_bins=32,
         pitch_histogram_window_size=5.0),
+
+    'beat_conditioned_performance_with_dynamics': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='beat_conditioned_performance_with_dynamics',
+            description='Beat-strength-conditioned Performance RNN'),
+        magenta.music.ConditionalEventSequenceEncoderDecoder(
+            performance_encoder_decoder.BeatStrengthEncoderDecoder(
+                window_size_steps=200),
+            magenta.music.OneHotEventSequenceEncoderDecoder(
+                performance_encoder_decoder.PerformanceOneHotEncoding(
+                    num_velocity_bins=32))),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001),
+        num_velocity_bins=32,
+        beat_strength_window_size=2.0),
 
     'multiconditioned_performance_with_dynamics': PerformanceRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(

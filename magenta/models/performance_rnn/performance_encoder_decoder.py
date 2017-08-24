@@ -141,3 +141,35 @@ class PitchHistogramEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
 
   def class_index_to_event(self, class_index, events):
     raise NotImplementedError
+
+
+class BeatStrengthEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
+  """An encoder/decoder for beat strength vector sequences.
+
+  This class has no label encoding and is only a trivial input encoder that
+  merely uses each vector as the input vector.
+  """
+
+  def __init__(self, window_size_steps):
+    self._window_size_steps = window_size_steps
+
+  @property
+  def input_size(self):
+    return self._window_size_steps
+
+  @property
+  def num_classes(self):
+    raise NotImplementedError
+
+  @property
+  def default_event_label(self):
+    raise NotImplementedError
+
+  def events_to_input(self, events, position):
+    return events[position]
+
+  def events_to_label(self, events, position):
+    raise NotImplementedError
+
+  def class_index_to_event(self, class_index, events):
+    raise NotImplementedError
