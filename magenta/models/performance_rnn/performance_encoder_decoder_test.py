@@ -25,7 +25,7 @@ class PerformanceOneHotEncodingTest(tf.test.TestCase):
 
   def setUp(self):
     self.enc = performance_encoder_decoder.PerformanceOneHotEncoding(
-        num_velocity_bins=16)
+        num_velocity_bins=16, num_sustain_bins=2)
 
   def testEncodeDecode(self):
     expected_pairs = [
@@ -52,7 +52,11 @@ class PerformanceOneHotEncodingTest(tf.test.TestCase):
         (PerformanceEvent(
             event_type=PerformanceEvent.VELOCITY, event_value=1), 356),
         (PerformanceEvent(
-            event_type=PerformanceEvent.VELOCITY, event_value=16), 371)
+            event_type=PerformanceEvent.VELOCITY, event_value=16), 371),
+        (PerformanceEvent(
+            event_type=PerformanceEvent.SUSTAIN, event_value=0), 372),
+        (PerformanceEvent(
+            event_type=PerformanceEvent.SUSTAIN, event_value=1), 373),
     ]
 
     for expected_event, expected_index in expected_pairs:

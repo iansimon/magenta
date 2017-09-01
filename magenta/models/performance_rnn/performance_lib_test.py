@@ -105,6 +105,67 @@ class PerformanceLibTest(tf.test.TestCase):
     ]
     self.assertEqual(expected_performance, performance)
 
+  def testFromQuantizedNoteSequenceWithOnOffSustain(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
+    testing_lib.add_control_changes_to_sequence(
+        self.note_sequence, 0, [(1.5, 64, 127), (2.5, 64, 0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = list(performance_lib.Performance(
+        quantized_sequence, num_sustain_bins=2))
+
+    pe = performance_lib.PerformanceEvent
+    expected_performance = [
+        pe(pe.NOTE_ON, 60),
+        pe(pe.NOTE_ON, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_ON, 67),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.SUSTAIN, 1),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.NOTE_OFF, 67),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.SUSTAIN, 0),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.NOTE_OFF, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 60),
+    ]
+    self.assertEqual(expected_performance, performance)
+
+  def testFromQuantizedNoteSequenceWithQuantizedSustain(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
+    testing_lib.add_control_changes_to_sequence(
+        self.note_sequence, 0,
+        [(1.5, 64, 100), (2.0, 64, 99), (2.5, 64, 0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = list(performance_lib.Performance(
+        quantized_sequence, num_sustain_bins=16))
+
+    pe = performance_lib.PerformanceEvent
+    expected_performance = [
+        pe(pe.NOTE_ON, 60),
+        pe(pe.NOTE_ON, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_ON, 67),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.SUSTAIN, 12),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.NOTE_OFF, 67),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.SUSTAIN, 0),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.NOTE_OFF, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 60),
+    ]
+    self.assertEqual(expected_performance, performance)
+
   def testToSequence(self):
     testing_lib.add_track_to_sequence(
         self.note_sequence, 0,
@@ -133,6 +194,46 @@ class PerformanceLibTest(tf.test.TestCase):
     # Make comparison easier by sorting.
     performance_ns.notes.sort(key=lambda n: (n.start_time, n.pitch))
     self.note_sequence.notes.sort(key=lambda n: (n.start_time, n.pitch))
+
+    self.assertEqual(self.note_sequence, performance_ns)
+
+  def testToSequenceWithOnOffSustain(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
+    testing_lib.add_control_changes_to_sequence(
+        self.note_sequence, 0, [(1.5, 64, 127), (2.5, 64, 0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = performance_lib.Performance(
+        quantized_sequence, num_sustain_bins=2)
+    performance_ns = performance.to_sequence()
+
+    # Make comparison easier by sorting.
+    performance_ns.notes.sort(key=lambda n: (n.start_time, n.pitch))
+    performance_ns.control_changes.sort(key=lambda cc: cc.time)
+    self.note_sequence.notes.sort(key=lambda n: (n.start_time, n.pitch))
+    self.note_sequence.control_changes.sort(key=lambda cc:cc.time)
+
+    self.assertEqual(self.note_sequence, performance_ns)
+
+  def testToSequenceWithQuantizedSustain(self):
+    testing_lib.add_track_to_sequence(
+        self.note_sequence, 0,
+        [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
+    testing_lib.add_control_changes_to_sequence(
+        self.note_sequence, 0, [(1.5, 64, 96), (2.5, 64, 0)])
+    quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+        self.note_sequence, steps_per_second=100)
+    performance = performance_lib.Performance(
+        quantized_sequence, num_sustain_bins=4)
+    performance_ns = performance.to_sequence()
+
+    # Make comparison easier by sorting.
+    performance_ns.notes.sort(key=lambda n: (n.start_time, n.pitch))
+    performance_ns.control_changes.sort(key=lambda cc: cc.time)
+    self.note_sequence.notes.sort(key=lambda n: (n.start_time, n.pitch))
+    self.note_sequence.control_changes.sort(key=lambda cc:cc.time)
 
     self.assertEqual(self.note_sequence, performance_ns)
 

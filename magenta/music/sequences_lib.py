@@ -104,8 +104,7 @@ def trim_note_sequence(sequence, start_time, end_time):
   return subsequence
 
 
-def extract_subsequence(sequence, start_time, end_time,
-                        sustain_control_number=64):
+def extract_subsequence(sequence, start_time, end_time):
   """Extracts a subsequence from a NoteSequence.
 
   Notes starting before `start_time` are not included. Notes ending after
@@ -124,7 +123,6 @@ def extract_subsequence(sequence, start_time, end_time,
     sequence: The NoteSequence to extract a subsequence from.
     start_time: The float time in seconds to start the subsequence.
     end_time: The float time in seconds to end the subsequence.
-    sustain_control_number: The MIDI control number for sustain pedal.
 
   Returns:
     A new NoteSequence containing the subsequence of `sequence` from the
@@ -199,7 +197,7 @@ def extract_subsequence(sequence, start_time, end_time,
   # pedal state prior to the extracted subsequence is maintained per-instrument.
   del subsequence.control_changes[:]
   sustain_events = [cc for cc in sequence.control_changes
-                    if cc.control_number == sustain_control_number]
+                    if cc.control_number == constants.SUSTAIN_CONTROL_NUMBER]
   initial_sustain_events = {}
   for sustain_event in sorted(sustain_events, key=lambda event: event.time):
     if sustain_event.time <= start_time:
@@ -758,7 +756,7 @@ _NOTE_ON = 2
 _NOTE_OFF = 3
 
 
-def apply_sustain_control_changes(note_sequence, sustain_control_number=64):
+def apply_sustain_control_changes(note_sequence):
   """Returns a new NoteSequence with sustain pedal control changes applied.
 
   Extends each note within a sustain to either the beginning of the next note of
@@ -769,10 +767,6 @@ def apply_sustain_control_changes(note_sequence, sustain_control_number=64):
   Args:
     note_sequence: The NoteSequence for which to apply sustain. This object will
         not be modified.
-    sustain_control_number: The MIDI control number for sustain pedal. Control
-        events with this number and value 0-63 will be treated as sustain pedal
-        OFF events, and control events with this number and value 64-127 will be
-        treated as sustain pedal ON events.
 
   Returns:
     A copy of `note_sequence` but with note end times extended to account for
@@ -796,7 +790,7 @@ def apply_sustain_control_changes(note_sequence, sustain_control_number=64):
                  for note in sequence.notes])
 
   for cc in sequence.control_changes:
-    if cc.control_number != sustain_control_number:
+    if cc.control_number != constants.SUSTAIN_CONTROL_NUMBER:
       continue
     value = cc.control_value
     if value < 0 or value > 127:

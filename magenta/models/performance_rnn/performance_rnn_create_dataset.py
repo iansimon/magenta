@@ -99,7 +99,8 @@ class EncoderPipeline(pipeline.Pipeline):
 class PerformanceExtractor(pipeline.Pipeline):
   """Extracts polyphonic tracks from a quantized NoteSequence."""
 
-  def __init__(self, min_events, max_events, num_velocity_bins, name=None):
+  def __init__(self, min_events, max_events, num_velocity_bins,
+               num_sustain_bins, name=None):
     super(PerformanceExtractor, self).__init__(
         input_type=music_pb2.NoteSequence,
         output_type=performance_lib.Performance,
@@ -107,13 +108,15 @@ class PerformanceExtractor(pipeline.Pipeline):
     self._min_events = min_events
     self._max_events = max_events
     self._num_velocity_bins = num_velocity_bins
+    self._num_sustain_bins = num_sustain_bins
 
   def transform(self, quantized_sequence):
     performances, stats = performance_lib.extract_performances(
         quantized_sequence,
         min_events_discard=self._min_events,
         max_events_truncate=self._max_events,
-        num_velocity_bins=self._num_velocity_bins)
+        num_velocity_bins=self._num_velocity_bins,
+        num_sustain_bins=self._num_sustain_bins)
     self._set_stats(stats)
     return performances
 
@@ -148,7 +151,7 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
     stretch_pipeline = note_sequence_pipelines.StretchPipeline(
         stretch_factors, name='StretchPipeline_' + mode)
     splitter = note_sequence_pipelines.Splitter(
-        hop_size_seconds=30.0, name='Splitter_' + mode)
+        hop_size_seconds=20.0, name='Splitter_' + mode)
     quantizer = note_sequence_pipelines.Quantizer(
         steps_per_second=config.steps_per_second, name='Quantizer_' + mode)
     transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
@@ -156,11 +159,17 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
     perf_extractor = PerformanceExtractor(
         min_events=min_events, max_events=max_events,
         num_velocity_bins=config.num_velocity_bins,
+        num_sustain_bins=config.num_sustain_bins,
         name='PerformanceExtractor_' + mode)
     encoder_pipeline = EncoderPipeline(config, name='EncoderPipeline_' + mode)
 
-    dag[sustain_pipeline] = partitioner[mode + '_performances']
-    dag[stretch_pipeline] = sustain_pipeline
+    # If we're modeling sustain explicitly in performances, no need to use the
+    # sustain pipeline to extend note end times.
+    if config.num_sustain_bins:
+      dag[stretch_pipeline] = partitioner[mode + '_performances']
+    else:
+      dag[sustain_pipeline] = partitioner[mode + '_performances']
+      dag[stretch_pipeline] = sustain_pipeline
     dag[splitter] = stretch_pipeline
     dag[quantizer] = splitter
     dag[transposition_pipeline] = quantizer

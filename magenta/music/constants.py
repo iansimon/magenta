@@ -38,6 +38,11 @@ NOTES_PER_OCTAVE = 12
 MIN_MIDI_VELOCITY = 1  # Inclusive.
 MAX_MIDI_VELOCITY = 127  # Inclusive.
 
+# Sustain-related constants.
+SUSTAIN_CONTROL_NUMBER = 64
+MIN_MIDI_SUSTAIN = 0  # Inclusive.
+MAX_MIDI_SUSTAIN = 127  # Inclusive.
+
 # Chord symbol for "no chord".
 NO_CHORD = 'N.C.'
 

@@ -35,7 +35,12 @@ MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
 
 MAX_MIDI_VELOCITY = constants.MAX_MIDI_VELOCITY
 MIN_MIDI_VELOCITY = constants.MIN_MIDI_VELOCITY
-MAX_NUM_VELOCITY_BINS = MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1
+NUM_VELOCITY_VALUES = MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1
+
+SUSTAIN_CONTROL_NUMBER = constants.SUSTAIN_CONTROL_NUMBER
+MAX_MIDI_SUSTAIN = constants.MAX_MIDI_SUSTAIN
+MIN_MIDI_SUSTAIN = constants.MIN_MIDI_SUSTAIN
+NUM_SUSTAIN_VALUES = MAX_MIDI_SUSTAIN - MIN_MIDI_SUSTAIN + 1
 
 STANDARD_PPQ = constants.STANDARD_PPQ
 
@@ -54,9 +59,11 @@ class PerformanceEvent(object):
   TIME_SHIFT = 3
   # Change current velocity.
   VELOCITY = 4
+  # Change sustain pedal activation.
+  SUSTAIN = 5
 
   def __init__(self, event_type, event_value):
-    if not PerformanceEvent.NOTE_ON <= event_type <= PerformanceEvent.VELOCITY:
+    if not PerformanceEvent.NOTE_ON <= event_type <= PerformanceEvent.SUSTAIN:
       raise ValueError('Invalid event type: %s' % event_type)
 
     if (event_type == PerformanceEvent.NOTE_ON or
@@ -67,8 +74,11 @@ class PerformanceEvent(object):
       if not 1 <= event_value <= MAX_SHIFT_STEPS:
         raise ValueError('Invalid time shift value: %s' % event_value)
     elif event_type == PerformanceEvent.VELOCITY:
-      if not 1 <= event_value <= MAX_NUM_VELOCITY_BINS:
+      if not 1 <= event_value <= NUM_VELOCITY_VALUES:
         raise ValueError('Invalid velocity value: %s' % event_value)
+    elif event_type == PerformanceEvent.SUSTAIN:
+      if not 0 <= event_value < NUM_SUSTAIN_VALUES:
+        raise ValueError('Invalid sustain value: %s' % event_value)
 
     self.event_type = event_type
     self.event_value = event_value
@@ -90,7 +100,7 @@ class Performance(events_lib.EventSequence):
   """
 
   def __init__(self, quantized_sequence=None, steps_per_second=None,
-               start_step=0, num_velocity_bins=0):
+               start_step=0, num_velocity_bins=0, num_sustain_bins=0):
     """Construct a Performance.
 
     Either quantized_sequence or steps_per_second should be supplied.
@@ -103,23 +113,31 @@ class Performance(events_lib.EventSequence):
           input, only notes starting after this step will be considered.
       num_velocity_bins: Number of velocity bins to use. If 0, velocity events
           will not be included at all.
+      num_sustain_bins: Number of sustain pedal bins to use. If 0, sustain
+          events will not be included at all.
 
     Raises:
-      ValueError: If `num_velocity_bins` is larger than the number of MIDI
-          velocity values.
+      ValueError: If both `quantized_sequence` and `steps_per_second` are
+          specified, if `num_velocity_bins` is larger than the number of MIDI
+          velocity values, or if `num_sustain_bins` is larger than the number of
+          MIDI sustain values.
     """
     if (quantized_sequence, steps_per_second).count(None) != 1:
       raise ValueError(
           'Must specify exactly one of quantized_sequence or steps_per_second')
 
-    if num_velocity_bins > MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1:
+    if num_velocity_bins > NUM_VELOCITY_VALUES:
       raise ValueError(
           'Number of velocity bins is too large: %d' % num_velocity_bins)
+
+    if num_sustain_bins > NUM_SUSTAIN_VALUES:
+      raise ValueError(
+          'Number of sustain bins is too large: %d' % num_sustain_bins)
 
     if quantized_sequence:
       sequences_lib.assert_is_absolute_quantized_sequence(quantized_sequence)
       self._events = self._from_quantized_sequence(
-          quantized_sequence, start_step, num_velocity_bins)
+          quantized_sequence, start_step, num_velocity_bins, num_sustain_bins)
       self._steps_per_second = (
           quantized_sequence.quantization_info.steps_per_second)
     else:
@@ -128,6 +146,7 @@ class Performance(events_lib.EventSequence):
 
     self._start_step = start_step
     self._num_velocity_bins = num_velocity_bins
+    self._num_sustain_bins = num_sustain_bins
 
   @property
   def start_step(self):
@@ -248,6 +267,8 @@ class Performance(events_lib.EventSequence):
         strs.append('(%s, SHIFT)' % event.event_value)
       elif event.event_type == PerformanceEvent.VELOCITY:
         strs.append('(%s, VELOCITY)' % event.event_value)
+      elif event.event_type == PerformanceEvent.SUSTAIN:
+        strs.append('(%s, SUSTAIN)' % event.event_value)
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
     return '\n'.join(strs)
@@ -271,45 +292,68 @@ class Performance(events_lib.EventSequence):
 
   @staticmethod
   def _from_quantized_sequence(quantized_sequence, start_step=0,
-                               num_velocity_bins=0):
+                               num_velocity_bins=0, num_sustain_bins=0):
     """Populate self with events from the given quantized NoteSequence object.
 
     Within a step, new pitches are started with NOTE_ON and existing pitches are
     ended with NOTE_OFF. TIME_SHIFT shifts the current step forward in time.
     VELOCITY changes the current velocity value that will be applied to all
-    NOTE_ON events.
+    NOTE_ON events. SUSTAIN changes the current sustain pedal activation.
 
     Args:
       quantized_sequence: A quantized NoteSequence instance.
       start_step: Start converting the sequence at this time step.
       num_velocity_bins: Number of velocity bins to use. If 0, velocity events
           will not be included at all.
+      num_sustain_bins: Number of sustain pedal bins to use. If 0, sustain
+          events will not be included at all. 2 models basic on-off sustain.
+          Larger values model partial sustain pedaling.
 
     Returns:
       A list of events.
     """
     notes = [note for note in quantized_sequence.notes
              if not note.is_drum and note.quantized_start_step >= start_step]
-    sorted_notes = sorted(notes, key=lambda note: note.start_time)
+    sustain_changes = [
+        cc for cc in quantized_sequence.control_changes
+        if not cc.is_drum and cc.control_number == SUSTAIN_CONTROL_NUMBER
+        and cc.quantized_step >= start_step]
 
-    # Sort all note start and end events.
-    onsets = [(note.quantized_start_step, idx, False)
-              for idx, note in enumerate(sorted_notes)]
-    offsets = [(note.quantized_end_step, idx, True)
-               for idx, note in enumerate(sorted_notes)]
-    note_events = sorted(onsets + offsets)
+    # Sort all note on/off and sustain events. Within a step, sorts in order of
+    # significance by a) unquantized time, b) sustain changes before notes, c)
+    # onsets before offsets, d) arbitrary note/sustain index in original
+    # sequence.
+    onsets = [(note.quantized_start_step, note.start_time, True, False, idx)
+              for idx, note in enumerate(notes)]
+    offsets = [(note.quantized_end_step, note.end_time, True, True, idx)
+               for idx, note in enumerate(notes)]
+    sustain_events = [(cc.quantized_step, cc.time, False, False, idx)
+                      for idx, cc in enumerate(sustain_changes)]
+    events = sorted(onsets + offsets + sustain_events)
 
     if num_velocity_bins:
       velocity_bin_size = int(math.ceil(
-          (MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1) / num_velocity_bins))
+          NUM_VELOCITY_VALUES / num_velocity_bins))
       velocity_to_bin = (
           lambda v: (v - MIN_MIDI_VELOCITY) // velocity_bin_size + 1)
 
+    if num_sustain_bins:
+      sustain_bin_size = int(math.ceil(NUM_SUSTAIN_VALUES / num_sustain_bins))
+      sustain_to_bin = (
+          lambda s: (s - MIN_MIDI_SUSTAIN) // sustain_bin_size)
+
     current_step = start_step
     current_velocity_bin = 0
+    current_sustain_bin = 0
     performance_events = []
 
-    for step, idx, is_offset in note_events:
+    for step, _, is_note, is_offset, idx in events:
+      if not is_note:
+        # Skip over sustain pedal changes that quantize to the current bin.
+        sustain_bin = sustain_to_bin(sustain_changes[idx].control_value)
+        if sustain_bin == current_sustain_bin:
+          continue
+
       if step > current_step:
         # Shift time forward from the current step to this event.
         while step > current_step + MAX_SHIFT_STEPS:
@@ -323,22 +367,30 @@ class Performance(events_lib.EventSequence):
                              event_value=int(step - current_step)))
         current_step = step
 
-      # If we're using velocity and this note's velocity is different from the
-      # current velocity, change the current velocity.
-      if num_velocity_bins:
-        velocity_bin = velocity_to_bin(sorted_notes[idx].velocity)
-        if not is_offset and velocity_bin != current_velocity_bin:
-          current_velocity_bin = velocity_bin
-          performance_events.append(
-              PerformanceEvent(event_type=PerformanceEvent.VELOCITY,
-                               event_value=current_velocity_bin))
+      if is_note:
+        # If we're using velocity and this note's velocity is different from the
+        # current velocity, change the current velocity.
+        if not is_offset and num_velocity_bins:
+          velocity_bin = velocity_to_bin(notes[idx].velocity)
+          if velocity_bin != current_velocity_bin:
+            current_velocity_bin = velocity_bin
+            performance_events.append(
+                PerformanceEvent(event_type=PerformanceEvent.VELOCITY,
+                                 event_value=current_velocity_bin))
 
-      # Add a performance event for this note on/off.
-      event_type = (PerformanceEvent.NOTE_OFF if is_offset
-                    else PerformanceEvent.NOTE_ON)
-      performance_events.append(
-          PerformanceEvent(event_type=event_type,
-                           event_value=sorted_notes[idx].pitch))
+        # Add a performance event for this note on/off.
+        event_type = (PerformanceEvent.NOTE_OFF if is_offset
+                      else PerformanceEvent.NOTE_ON)
+        performance_events.append(
+            PerformanceEvent(event_type=event_type,
+                             event_value=notes[idx].pitch))
+
+      else:
+        # This is a sustain pedal change.
+        current_sustain_bin = sustain_bin
+        performance_events.append(
+            PerformanceEvent(event_type=PerformanceEvent.SUSTAIN,
+                             event_value=current_sustain_bin))
 
     return performance_events
 
@@ -375,8 +427,11 @@ class Performance(events_lib.EventSequence):
 
     if self._num_velocity_bins:
       velocity_bin_size = int(math.ceil(
-          (MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1) /
-          self._num_velocity_bins))
+          NUM_VELOCITY_VALUES / self._num_velocity_bins))
+
+    if self._num_sustain_bins:
+      sustain_bin_size = int(math.ceil(
+          NUM_SUSTAIN_VALUES / self._num_sustain_bins))
 
     # Map pitch to list because one pitch may be active multiple times.
     pitch_start_steps_and_velocities = collections.defaultdict(list)
@@ -417,6 +472,19 @@ class Performance(events_lib.EventSequence):
         assert self._num_velocity_bins
         velocity = (
             MIN_MIDI_VELOCITY + (event.event_value - 1) * velocity_bin_size)
+      elif event.event_type == PerformanceEvent.SUSTAIN:
+        cc = sequence.control_changes.add()
+        cc.time = step * seconds_per_step + sequence_start_time
+        cc.instrument = instrument
+        cc.program = program
+        cc.control_number = SUSTAIN_CONTROL_NUMBER
+        if self._num_sustain_bins == 2:
+          # Special case for 2 sustain bins, use min and max values.
+          cc.control_value = (
+              MIN_MIDI_SUSTAIN if event.event_value == 0 else MAX_MIDI_SUSTAIN)
+        else:
+          cc.control_value = (
+              MIN_MIDI_SUSTAIN + event.event_value * sustain_bin_size)
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
 
@@ -584,7 +652,7 @@ def performance_pitch_histogram_sequence(performance, window_size_seconds,
 
 def extract_performances(
     quantized_sequence, start_step=0, min_events_discard=None,
-    max_events_truncate=None, num_velocity_bins=0):
+    max_events_truncate=None, num_velocity_bins=0, num_sustain_bins=0):
   """Extracts a performance from the given quantized NoteSequence.
 
   Currently, this extracts only one performance from a given track.
@@ -598,6 +666,8 @@ def extract_performances(
         truncated.
     num_velocity_bins: Number of velocity bins to use. If 0, velocity events
         will not be included at all.
+    num_sustain_bins: Number of sustain bins to use. If 0, sustain events will
+        not be included at all.
 
   Returns:
     performances: A python list of Performance instances.
@@ -614,8 +684,7 @@ def extract_performances(
 
   # Create a histogram measuring lengths (in bars not steps).
   stats['performance_lengths_in_seconds'] = statistics.Histogram(
-      'performance_lengths_in_seconds',
-      [5, 10, 20, 30, 40, 60, 120])
+      'performance_lengths_in_seconds', [5, 10, 15, 20])
 
   # Allow only 1 program.
   programs = set()
@@ -629,7 +698,8 @@ def extract_performances(
 
   # Translate the quantized sequence into a Performance.
   performance = Performance(quantized_sequence, start_step=start_step,
-                            num_velocity_bins=num_velocity_bins)
+                            num_velocity_bins=num_velocity_bins,
+                            num_sustain_bins=num_sustain_bins)
 
   if (max_events_truncate is not None and
       len(performance) > max_events_truncate):

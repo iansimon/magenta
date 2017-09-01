@@ -38,12 +38,17 @@ EVENT_RANGES = [
 class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
   """One-hot encoding for performance events."""
 
-  def __init__(self, num_velocity_bins=0):
+  def __init__(self, num_velocity_bins=0, num_sustain_bins=0):
+    self._event_ranges = EVENT_RANGES
+    # Velocity bin numbering starts at 1 to indicate that even the minimum
+    # velocity value means _some_ velocity, while sustain bin numbering starts
+    # at 0 since sustain can be completely off.
     if num_velocity_bins > 0:
-      self._event_ranges = EVENT_RANGES + [
+      self._event_ranges = self._event_ranges + [
           (PerformanceEvent.VELOCITY, 1, num_velocity_bins)]
-    else:
-      self._event_ranges = EVENT_RANGES
+    if num_sustain_bins > 0:
+      self._event_ranges = self._event_ranges + [
+          (PerformanceEvent.SUSTAIN, 0, num_sustain_bins - 1)]
 
   @property
   def num_classes(self):

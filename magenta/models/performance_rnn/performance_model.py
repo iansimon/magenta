@@ -168,6 +168,8 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
   Attributes:
     num_velocity_bins: Number of velocity bins to use. If 0, don't use velocity
         at all.
+    num_sustain_bins: Number of sustain pedal bins to use. If 0, don't use
+        sustain at all.
     density_bin_ranges: List of note density (notes per second) bin boundaries
         to use when quantizing note density for conditioning. If None, don't
         condition on note density.
@@ -178,11 +180,13 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
   """
 
   def __init__(self, details, encoder_decoder, hparams, num_velocity_bins=0,
-               density_bin_ranges=None, density_window_size=3.0,
+               num_sustain_bins=0, density_bin_ranges=None,
+               density_window_size=3.0,
                pitch_histogram_window_size=None):
     super(PerformanceRnnConfig, self).__init__(
         details, encoder_decoder, hparams)
     self.num_velocity_bins = num_velocity_bins
+    self.num_sustain_bins = num_sustain_bins
     self.density_bin_ranges = density_bin_ranges
     self.density_window_size = density_window_size
     self.pitch_histogram_window_size = pitch_histogram_window_size
@@ -216,6 +220,40 @@ default_configs = {
             clip_norm=3,
             learning_rate=0.001),
         num_velocity_bins=32),
+
+    'performance_with_dynamics_and_on_off_sustain': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='performance_with_dynamics_and_on_off_sustain',
+            description='Performance RNN with dynamics and on/off sustain'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            performance_encoder_decoder.PerformanceOneHotEncoding(
+                num_velocity_bins=32,
+                num_sustain_bins=2)),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001),
+        num_velocity_bins=32,
+        num_sustain_bins=2),
+
+    'performance_with_dynamics_and_partial_sustain': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='performance_with_dynamics_and_partial_sustain',
+            description='Performance RNN with dynamics and partial sustain'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            performance_encoder_decoder.PerformanceOneHotEncoding(
+                num_velocity_bins=32,
+                num_sustain_bins=8)),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001),
+        num_velocity_bins=32,
+        num_sustain_bins=8),
 
     'density_conditioned_performance_with_dynamics': PerformanceRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(

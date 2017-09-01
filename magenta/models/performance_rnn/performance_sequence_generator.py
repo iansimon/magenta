@@ -47,7 +47,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
   def __init__(self, model, details,
                steps_per_second=performance_lib.DEFAULT_STEPS_PER_SECOND,
-               num_velocity_bins=0, note_density_conditioning=False,
+               num_velocity_bins=0, num_sustain_bins=0,
+               note_density_conditioning=False,
                pitch_histogram_conditioning=False,
                max_note_duration=MAX_NOTE_DURATION_SECONDS,
                fill_generate_section=True, checkpoint=None, bundle=None):
@@ -59,6 +60,9 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       steps_per_second: Number of quantized steps per second.
       num_velocity_bins: Number of quantized velocity bins. If 0, don't use
           velocity.
+      num_sustain_bins: Number of quantized sustain pedal bins. If 0, don't use
+          sustain. If 2, model sustain as on/off. If greater than 2, model
+          partial sustain pedaling.
       note_density_conditioning: If True, generate conditional on note density.
       pitch_histogram_conditioning: If True, generate conditional on pitch class
           histogram.
@@ -82,6 +86,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
         model, details, checkpoint, bundle)
     self.steps_per_second = steps_per_second
     self.num_velocity_bins = num_velocity_bins
+    self.num_sustain_bins = num_sustain_bins
     self.note_density_conditioning = note_density_conditioning
     self.pitch_histogram_conditioning = pitch_histogram_conditioning
     self.max_note_duration = max_note_duration
@@ -123,7 +128,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
     extracted_perfs, _ = performance_lib.extract_performances(
         quantized_primer_sequence, start_step=input_start_step,
-        num_velocity_bins=self.num_velocity_bins)
+        num_velocity_bins=self.num_velocity_bins,
+        num_sustain_bins=self.num_sustain_bins)
     assert len(extracted_perfs) <= 1
 
     generate_start_step = mm.quantize_to_step(
@@ -143,7 +149,8 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
           steps_per_second=(
               quantized_primer_sequence.quantization_info.steps_per_second),
           start_step=generate_start_step,
-          num_velocity_bins=self.num_velocity_bins)
+          num_velocity_bins=self.num_velocity_bins,
+          num_sustain_bins=self.num_sustain_bins)
 
     # Ensure that the track extends up to the step we want to start generating.
     performance.set_length(generate_start_step - performance.start_step)
@@ -287,6 +294,7 @@ def get_generator_map():
         performance_model.PerformanceRnnModel(config), config.details,
         steps_per_second=config.steps_per_second,
         num_velocity_bins=config.num_velocity_bins,
+        num_sustain_bins=config.num_sustain_bins,
         note_density_conditioning=config.density_bin_ranges is not None,
         pitch_histogram_conditioning=(
             config.pitch_histogram_window_size is not None),
