@@ -65,3 +65,34 @@ class MidiOneHotEncoding(encoder_decoder.OneHotEncoding):
       offset += max_value - min_value + 1
 
     raise ValueError('Unknown event index: %s' % index)
+
+
+class MidiControlSequenceEncoderDecoder(
+    encoder_decoder.EventSequenceEncoderDecoder):
+  """An encoder/decoder for MIDI control sequences."""
+
+  def __init__(self, steps_per_bar):
+    self._steps_per_bar = steps_per_bar
+
+  @property
+  def input_size(self):
+    return (
+        midi_lib.NUM_PROGRAM_BINS * (midi_lib.NUM_MIDI_PITCHES + 1) +
+        self._steps_per_bar)
+
+  @property
+  def num_classes(self):
+    raise NotImplementedError
+
+  @property
+  def default_event_label(self):
+    raise NotImplementedError
+
+  def events_to_input(self, events, position):
+    return events[position]
+
+  def events_to_label(self, events, position):
+    raise NotImplementedError
+
+  def class_index_to_event(self, class_index, events):
+    raise NotImplementedError

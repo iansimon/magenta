@@ -32,6 +32,7 @@ NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
 
 MAX_MIDI_PITCH = constants.MAX_MIDI_PITCH
 MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
+NUM_MIDI_PITCHES = MAX_MIDI_PITCH - MIN_MIDI_PITCH + 1
 
 MAX_MIDI_PROGRAM = 127
 MIN_MIDI_PROGRAM = 0
@@ -42,6 +43,11 @@ STANDARD_PPQ = constants.STANDARD_PPQ
 
 DEFAULT_STEPS_PER_QUARTER = 24
 MAX_SHIFT_STEPS = 96
+
+
+# Keep track of active notes and current program for conditioning.
+MidiControlState = collections.namedtuple(
+    'MidiControlState', ['idx', 'step', 'active_notes', 'current_program'])
 
 
 class MidiEvent(object):
@@ -127,8 +133,8 @@ class MidiSequence(events_lib.EventSequence):
     return self._start_step
 
   @property
-  def steps_per_second(self):
-    return self._steps_per_second
+  def steps_per_quarter(self):
+    return self._steps_per_quarter
 
   def _append_steps(self, num_steps):
     """Adds steps to the end of the sequence."""
@@ -450,6 +456,72 @@ class MidiSequence(events_lib.EventSequence):
           sequence.total_time = note.end_time
 
     return sequence
+
+
+def extend_control_events(control_events, midi_sequence, control_state):
+  """Extend a MIDI control sequence of active notes and current program.
+
+  Args:
+    control_events: The control sequence to extend.
+    midi_sequence: The MidiSequence being generated.
+    control_state: A MidiControlState tuple containing the current state of
+        generation, i.e. which notes are active for which programs and what the
+        current program is.
+
+  Returns:
+    The MidiControlState after extending the control sequence.
+  """
+  idx = control_state.idx
+  step = control_state.step
+  active_notes = copy.deepcopy(control_state.active_notes)
+  current_program = control_state.current_program
+
+  # Assume 4/4 for now.
+  steps_per_bar = 4 * midi_sequence.steps_per_quarter
+
+  while idx < len(midi_sequence):
+    if idx >= 0:
+      # Update the control state (we start with idx = -1 to produce the control
+      # input vector for the very first step of midi_sequence).
+      if midi_sequence[idx].event_type == MidiEvent.NOTE_ON:
+        active_notes[(current_program, midi_sequence[idx].event_value)] += 1
+      elif midi_sequence[idx].event_type == MidiEvent.NOTE_OFF:
+        active_notes[(current_program, midi_sequence[idx].event_value)] -= 1
+        if active_notes[(current_program, midi_sequence[idx].event_value)] < 0:
+          active_notes[(current_program, midi_sequence[idx].event_value)] = 0
+      elif midi_sequence[idx].event_type == MidiEvent.TIME_SHIFT:
+        step += midi_sequence[idx].event_value
+      elif midi_sequence[idx].event_type == MidiEvent.PROGRAM:
+        current_program = midi_sequence[idx].event_value
+    idx += 1
+
+    # Create and append the next control input vector.
+    control_vector = [0] * (
+        NUM_PROGRAM_BINS * NUM_MIDI_PITCHES + NUM_PROGRAM_BINS + steps_per_bar)
+    offset = 0
+    for program, pitch in active_notes:
+      j = (program - 1) * NUM_MIDI_PITCHES + pitch - MIN_MIDI_PITCH
+      control_vector[offset + j] = active_notes[(program, pitch)]
+    offset += NUM_PROGRAM_BINS * NUM_MIDI_PITCHES
+    if current_program > 0:
+      control_vector[offset + current_program - 1] = 1
+    offset += NUM_PROGRAM_BINS
+    control_vector[offset + step % steps_per_bar] = 1
+    control_events.append(control_vector)
+
+  return MidiControlState(
+      idx=idx, step=step, active_notes=active_notes,
+      current_program=current_program)
+
+
+def midi_control_sequence(midi_sequence):
+  state = MidiControlState(
+      idx=-1, step=0, active_notes=collections.defaultdict(int),
+      current_program=0)
+  control_sequence = []
+  extend_control_events(control_sequence, midi_sequence, state)
+  # Don't include the control vector for the next step after midi_sequence.
+  return control_sequence[:-1]
 
 
 def extract_midi_sequences(

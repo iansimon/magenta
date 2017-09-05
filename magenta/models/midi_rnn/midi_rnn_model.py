@@ -22,6 +22,7 @@ import tensorflow as tf
 import magenta
 
 from magenta.models.midi_rnn import midi_encoder_decoder
+from magenta.models.midi_rnn import midi_lib
 from magenta.models.midi_rnn.midi_lib import MidiEvent
 from magenta.models.shared import events_rnn_model
 
@@ -51,9 +52,21 @@ class MidiRnnModel(events_rnn_model.EventSequenceRnnModel):
       The generated MidiSequence object (which begins with the provided primer
       track).
     """
+    if self._config.use_control_state:
+      control_events = []
+      control_state = midi_lib.MidiControlState(idx=-1, step=0,
+          active_notes=collections.defaultdict(int), current_program=0)
+      extend_control_events_callback = midi_lib.extend_control_events
+    else:
+      control_events = None
+      control_state = None
+      extend_control_events_callback = None
+
     return self._generate_events(
         num_steps, primer_sequence, temperature, beam_size, branch_factor,
-        steps_per_iteration)
+        steps_per_iteration, control_events=control_events,
+        control_state=control_state,
+        extend_control_events_callback=extend_control_events_callback)
 
   def midi_log_likelihood(self, sequence):
     """Evaluate the log likelihood of a MIDI sequence.
@@ -69,11 +82,18 @@ class MidiRnnModel(events_rnn_model.EventSequenceRnnModel):
 
 
 class MidiRnnConfig(events_rnn_model.EventSequenceRnnConfig):
-  """Stores a configuration for a Midi RNN."""
+  """Stores a configuration for a Midi RNN.
 
-  def __init__(self, details, encoder_decoder, hparams):
+  Attributes:
+    use_control_state: Whether or not to condition on control state (notes
+        active, current program, position in bar).
+  """
+
+  def __init__(self, details, encoder_decoder, hparams, steps_per_quarter,
+               use_control_state=False):
     super(MidiRnnConfig, self).__init__(
-        details, encoder_decoder, hparams)
+        details, encoder_decoder, hparams, steps_per_quarter=steps_per_quarter)
+    self.use_control_state = use_control_state
 
 
 default_configs = {
@@ -88,5 +108,24 @@ default_configs = {
             rnn_layer_sizes=[512, 512, 512],
             dropout_keep_prob=1.0,
             clip_norm=3,
-            learning_rate=0.001)),
+            learning_rate=0.001),
+        steps_per_quarter=24),
+
+    'midi_with_state': MidiRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='midi_with_state',
+            description='MIDI RNN with control state'),
+        magenta.music.ConditionalEventSequenceEncoderDecoder(
+            midi_encoder_decoder.MidiControlSequenceEncoderDecoder(
+                steps_per_bar=96),
+            magenta.music.OneHotEventSequenceEncoderDecoder(
+                midi_encoder_decoder.MidiOneHotEncoding())),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001),
+        steps_per_quarter=24,
+        use_control_state=True),
 }

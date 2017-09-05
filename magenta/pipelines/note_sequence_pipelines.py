@@ -69,6 +69,29 @@ class TimeChangeSplitter(NoteSequencePipeline):
     return sequences_lib.split_note_sequence_on_time_changes(note_sequence)
 
 
+class BarSplitter(NoteSequencePipeline):
+  """A Pipeline that splits NoteSequences at intervals specified in bars."""
+
+  def __init__(self, hop_size_bars, name=None):
+    super(BarSplitter, self).__init__(name=name)
+    self._hop_size_bars = hop_size_bars
+
+  def transform(self, note_sequence):
+    if note_sequence.tempos:
+      qpm = note_sequence.tempos[0].qpm
+    else:
+      qpm = 120.0
+    if note_sequence.time_signatures:
+      quarters_per_beat = 4.0 / note_sequence.time_signatures[0].denominator
+      quarters_per_bar = (quarters_per_beat *
+                          note_sequence.time_signatures[0].numerator)
+    else:
+      quarters_per_bar = 4.0
+    seconds_per_bar = 60.0 * quarters_per_bar / qpm
+    hop_size_seconds = self._hop_size_bars * seconds_per_bar
+    return sequences_lib.split_note_sequence(note_sequence, hop_size_seconds)
+
+
 class Quantizer(NoteSequencePipeline):
   """A Pipeline that quantizes NoteSequence data."""
 
@@ -188,9 +211,10 @@ class TranspositionPipeline(NoteSequencePipeline):
     """Transposes a note sequence by the specified amount."""
     ts = copy.deepcopy(ns)
     for note in ts.notes:
-      note.pitch += amount
-      if (note.pitch < constants.MIN_MIDI_PITCH or
-          note.pitch > constants.MAX_MIDI_PITCH):
-        stats['skipped_due_to_range_exceeded'].increment()
-        return None
+      if not note.is_drum:
+        note.pitch += amount
+        if (note.pitch < constants.MIN_MIDI_PITCH or
+            note.pitch > constants.MAX_MIDI_PITCH):
+          stats['skipped_due_to_range_exceeded'].increment()
+          return None
     return ts

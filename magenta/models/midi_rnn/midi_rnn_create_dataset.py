@@ -65,9 +65,15 @@ class EncoderPipeline(pipeline.Pipeline):
         output_type=tf.train.SequenceExample,
         name=name)
     self._encoder_decoder = config.encoder_decoder
+    self._use_control_state = config.use_control_state
 
   def transform(self, midi_sequence):
-    encoded = self._encoder_decoder.encode(midi_sequence)
+    if self._use_control_state:
+      # Encode conditional on control state.
+      control_sequence = midi_lib.midi_control_sequence(midi_sequence)
+      encoded = self._encoder_decoder.encode(control_sequence, midi_sequence)
+    else:
+      encoded = self._encoder_decoder.encode(midi_sequence)
     return [encoded]
 
 
@@ -115,6 +121,8 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   for mode in ['eval', 'training']:
     time_change_splitter = note_sequence_pipelines.TimeChangeSplitter(
         name='TimeChangeSplitter_' + mode)
+    bar_splitter = note_sequence_pipelines.BarSplitter(
+        hop_size_bars=32, name='BarSplitter_' + mode)
     quantizer = note_sequence_pipelines.Quantizer(
         steps_per_quarter=config.steps_per_quarter, name='Quantizer_' + mode)
     transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
@@ -125,7 +133,8 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
     encoder_pipeline = EncoderPipeline(config, name='EncoderPipeline_' + mode)
 
     dag[time_change_splitter] = partitioner[mode + '_midi_sequences']
-    dag[quantizer] = time_change_splitter
+    dag[bar_splitter] = time_change_splitter
+    dag[quantizer] = bar_splitter
     dag[transposition_pipeline] = quantizer
     dag[midi_extractor] = transposition_pipeline
     dag[encoder_pipeline] = midi_extractor
@@ -138,7 +147,7 @@ def main(unused_argv):
   tf.logging.set_verbosity(FLAGS.log)
 
   pipeline_instance = get_pipeline(
-      min_events=96,
+      min_events=384,
       max_events=1024,
       eval_ratio=FLAGS.eval_ratio,
       config=midi_rnn_model.default_configs[FLAGS.config])
