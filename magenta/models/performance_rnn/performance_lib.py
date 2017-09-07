@@ -426,12 +426,10 @@ class Performance(events_lib.EventSequence):
     step = 0
 
     if self._num_velocity_bins:
-      velocity_bin_size = int(math.ceil(
-          NUM_VELOCITY_VALUES / self._num_velocity_bins))
-
+      velocity_bin_size = ((NUM_VELOCITY_VALUES - 1) /
+                           (self._num_velocity_bins - 1))
     if self._num_sustain_bins:
-      sustain_bin_size = int(math.ceil(
-          NUM_SUSTAIN_VALUES / self._num_sustain_bins))
+      sustain_bin_size = (NUM_SUSTAIN_VALUES - 1) / (self._num_sustain_bins - 1)
 
     # Map pitch to list because one pitch may be active multiple times.
     pitch_start_steps_and_velocities = collections.defaultdict(list)
@@ -470,21 +468,17 @@ class Performance(events_lib.EventSequence):
         step += event.event_value
       elif event.event_type == PerformanceEvent.VELOCITY:
         assert self._num_velocity_bins
-        velocity = (
-            MIN_MIDI_VELOCITY + (event.event_value - 1) * velocity_bin_size)
+        velocity = MIN_MIDI_VELOCITY + int(round(
+            (event.event_value - 1) * velocity_bin_size))
       elif event.event_type == PerformanceEvent.SUSTAIN:
+        assert self._num_sustain_bins
         cc = sequence.control_changes.add()
         cc.time = step * seconds_per_step + sequence_start_time
         cc.instrument = instrument
         cc.program = program
         cc.control_number = SUSTAIN_CONTROL_NUMBER
-        if self._num_sustain_bins == 2:
-          # Special case for 2 sustain bins, use min and max values.
-          cc.control_value = (
-              MIN_MIDI_SUSTAIN if event.event_value == 0 else MAX_MIDI_SUSTAIN)
-        else:
-          cc.control_value = (
-              MIN_MIDI_SUSTAIN + event.event_value * sustain_bin_size)
+        cc.control_value = MIN_MIDI_SUSTAIN + int(round(
+            event.event_value * sustain_bin_size))
       else:
         raise ValueError('Unknown event type: %s' % event.event_type)
 

@@ -222,7 +222,7 @@ class PerformanceLibTest(tf.test.TestCase):
         self.note_sequence, 0,
         [(60, 100, 0.0, 4.0), (64, 100, 0.0, 3.0), (67, 100, 1.0, 2.0)])
     testing_lib.add_control_changes_to_sequence(
-        self.note_sequence, 0, [(1.5, 64, 96), (2.5, 64, 0)])
+        self.note_sequence, 0, [(1.5, 64, 85), (2.5, 64, 0)])
     quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
         self.note_sequence, steps_per_second=100)
     performance = performance_lib.Performance(
