@@ -6,8 +6,14 @@ Performance RNN models polyphonic performances with dynamics and expressive timi
 * NOTE_OFF(*pitch*): stop a note at *pitch*
 * TIME_SHIFT(*amount*): advance time by *amount*
 * VELOCITY(*value*): change current velocity to *value*
+* SUSTAIN(*value*): change current sustain pedal activation to *value*
 
 This model creates music in a language similar to MIDI itself, with **note-on** and **note-off** events instead of explicit durations. In order to support expressive timing, the model controls the clock with **time-shift** events that move forward at increments of 10 ms, up to 1 second. All note-on and note-off events happen at the current time as determined by all previous time shifts in the event sequence. The model also supports **velocity** events that set the current velocity, used by subsequent note-on events.  Velocity can optionally be quantized into fewer than the 127 valid MIDI velocities.
+
+The model can handle sustain pedal in one of two ways: 1) sustain pedal is not
+modeled explicitly but notes in the training data can be extended when the
+sustain pedal is depressed, or 2) **sustain** pedal events are included in the
+performance event sequence.
 
 Because of this representation, the model is capable of generating performances with more natural timing and dynamics compared to our other models that a) use a quantized metrical grid with fixed tempo and b) don't handle velocity.
 
@@ -28,6 +34,7 @@ If you want to get started right away, you can use a few models that we've pre-t
 
 * [performance](http://download.magenta.tensorflow.org/models/performance.mag)
 * [performance_with_dynamics](http://download.magenta.tensorflow.org/models/performance_with_dynamics.mag)
+* [performance_with_dynamics_and_sustain](http://download.magenta.tensorflow.org/models/performance_with_dynamics_and_sustain.mag)
 * [density_conditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/density_conditioned_performance_with_dynamics.mag)
 * [pitch_conditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/pitch_conditioned_performance_with_dynamics.mag)
 * [multiconditioned_performance_with_dynamics](http://download.magenta.tensorflow.org/models/multiconditioned_performance_with_dynamics.mag)
@@ -38,7 +45,7 @@ The latter three models are *conditional* models that can generate performances 
 
 ```
 BUNDLE_PATH=<absolute path of .mag file>
-CONFIG=<one of 'performance', 'performance_with_dynamics', 'density_conditioned_performance_with_dynamics', 'pitch_conditioned_performance_with_dynamics', or 'multiconditioned_performance_with_dynamics', matching the bundle>
+CONFIG=<one of 'performance', 'performance_with_dynamics', 'performance_with_dynamics_and_sustain', 'density_conditioned_performance_with_dynamics', 'pitch_conditioned_performance_with_dynamics', or 'multiconditioned_performance_with_dynamics', matching the bundle>
 
 performance_rnn_generate \
 --config=${CONFIG} \
@@ -77,7 +84,7 @@ Our first step will be to convert a collection of MIDI or MusicXML files into No
 SequenceExamples are fed into the model during training and evaluation. Each SequenceExample will contain a sequence of inputs and a sequence of labels that represent a performance. Run the command below to extract performances  from your NoteSequences and save them as SequenceExamples. Two collections of SequenceExamples will be generated, one for training, and one for evaluation, where the fraction of SequenceExamples in the evaluation set is determined by `--eval_ratio`. With an eval ratio of 0.10, 10% of the extracted performances will be saved in the eval collection, and 90% will be saved in the training collection.
 
 ```
-CONFIG=<one of 'performance', 'performance_with_dynamics', 'density_conditioned_performance_with_dynamics', 'pitch_conditioned_performance_with_dynamics', or 'multiconditioned_performance_with_dynamics'>
+CONFIG=<one of 'performance', 'performance_with_dynamics', 'performance_with_dynamics_and_sustain', 'density_conditioned_performance_with_dynamics', 'pitch_conditioned_performance_with_dynamics', or 'multiconditioned_performance_with_dynamics'>
 
 performance_rnn_create_dataset \
 --config=${CONFIG} \

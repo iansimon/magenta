@@ -221,9 +221,9 @@ default_configs = {
             learning_rate=0.001),
         num_velocity_bins=32),
 
-    'performance_with_dynamics_and_on_off_sustain': PerformanceRnnConfig(
+    'performance_with_dynamics_and_sustain': PerformanceRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(
-            id='performance_with_dynamics_and_on_off_sustain',
+            id='performance_with_dynamics_and_sustain',
             description='Performance RNN with dynamics and on/off sustain'),
         magenta.music.OneHotEventSequenceEncoderDecoder(
             performance_encoder_decoder.PerformanceOneHotEncoding(
@@ -237,23 +237,6 @@ default_configs = {
             learning_rate=0.001),
         num_velocity_bins=32,
         num_sustain_bins=2),
-
-    'performance_with_dynamics_and_partial_sustain': PerformanceRnnConfig(
-        magenta.protobuf.generator_pb2.GeneratorDetails(
-            id='performance_with_dynamics_and_partial_sustain',
-            description='Performance RNN with dynamics and partial sustain'),
-        magenta.music.OneHotEventSequenceEncoderDecoder(
-            performance_encoder_decoder.PerformanceOneHotEncoding(
-                num_velocity_bins=32,
-                num_sustain_bins=8)),
-        tf.contrib.training.HParams(
-            batch_size=64,
-            rnn_layer_sizes=[512, 512, 512],
-            dropout_keep_prob=1.0,
-            clip_norm=3,
-            learning_rate=0.001),
-        num_velocity_bins=32,
-        num_sustain_bins=8),
 
     'density_conditioned_performance_with_dynamics': PerformanceRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(
