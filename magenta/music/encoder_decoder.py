@@ -329,6 +329,10 @@ class OneHotEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
     return self._one_hot_encoding.num_classes
 
   @property
+  def num_categories(self):
+    return self._one_hot_encoding.num_categories
+
+  @property
   def num_classes(self):
     return self._one_hot_encoding.num_classes
 
@@ -336,6 +340,14 @@ class OneHotEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
   def default_event_label(self):
     return self._one_hot_encoding.encode_event(
         self._one_hot_encoding.default_event)
+
+  def labels_to_categories(self, labels):
+    return [self._one_hot_encoding.event_to_category(
+                self._one_hot_encoding.decode_event(label))
+            for label in labels]
+
+  def category_name(self, category):
+    return self._one_hot_encoding.category_name(category)
 
   def events_to_input(self, events, position):
     """Returns the input vector for the given position in the event sequence.
