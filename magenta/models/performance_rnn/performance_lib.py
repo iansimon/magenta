@@ -348,7 +348,7 @@ class Performance(events_lib.EventSequence):
     performance_events = []
 
     for step, _, is_note, is_offset, idx in events:
-      if not is_note:
+      if not is_note and num_sustain_bins:
         # Skip over sustain pedal changes that quantize to the current bin.
         sustain_bin = sustain_to_bin(sustain_changes[idx].control_value)
         if sustain_bin == current_sustain_bin:
@@ -385,7 +385,7 @@ class Performance(events_lib.EventSequence):
             PerformanceEvent(event_type=event_type,
                              event_value=notes[idx].pitch))
 
-      else:
+      elif num_sustain_bins:
         # This is a sustain pedal change.
         current_sustain_bin = sustain_bin
         performance_events.append(
