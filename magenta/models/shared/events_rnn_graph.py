@@ -89,6 +89,8 @@ def build_graph(mode, config, sequence_example_file_paths=None):
   num_classes = encoder_decoder.num_classes
   no_event_label = encoder_decoder.default_event_label
 
+  num_categories = encoder_decoder.num_categories
+
   with tf.Graph().as_default() as graph:
     inputs, labels, lengths = None, None, None
 
@@ -131,6 +133,9 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       event_positions = tf.to_float(tf.not_equal(labels_flat, no_event_label))
       no_event_positions = tf.to_float(tf.equal(labels_flat, no_event_label))
 
+      categories = tf.py_func(
+          encoder_decoder.labels_to_categories, [labels_flat], tf.int16)
+
       if mode == 'train':
         loss = tf.reduce_mean(softmax_cross_entropy)
         perplexity = tf.reduce_mean(tf.exp(softmax_cross_entropy))
@@ -155,22 +160,41 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             'metrics/event_accuracy': event_accuracy,
             'metrics/no_event_accuracy': no_event_accuracy,
         }
+
+        for category in range(num_categories):
+          category_name = encoder_decoder.category_name(category)
+          category_positions = tf.to_float(tf.equal(labels_flat, category))
+          category_accuracy = (
+              tf.reduce_sum(correct_predictions * category_positions) /
+              tf.reduce_sum(category_positions))
+          vars_to_summarize['metrics/category_accuracy/%s' % category_name] = (
+              category_accuracy)
+
       elif mode == 'eval':
+        names_to_tuples = {
+            'loss': tf.metrics.mean(softmax_cross_entropy),
+            'metrics/accuracy': tf.metrics.accuracy(
+                labels_flat, predictions_flat),
+            'metrics/per_class_accuracy':
+                tf.metrics.mean_per_class_accuracy(
+                    labels_flat, predictions_flat, num_classes),
+            'metrics/event_accuracy': tf.metrics.recall(
+                event_positions, correct_predictions),
+            'metrics/no_event_accuracy': tf.metrics.recall(
+                no_event_positions, correct_predictions),
+            'metrics/perplexity': tf.metrics.mean(
+                tf.exp(softmax_cross_entropy)),
+        }
+
+        for category in range(num_categories):
+          category_name = encoder_decoder.category_name(category)
+          category_positions = tf.to_float(tf.equal(labels_flat, category))
+          names_to_tuples['metrics/category_accuracy/%s' % category_name] = (
+              tf.metrics.recall(category_positions, correct_predictions))
+
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
-            {
-                'loss': tf.metrics.mean(softmax_cross_entropy),
-                'metrics/accuracy': tf.metrics.accuracy(
-                    labels_flat, predictions_flat),
-                'metrics/per_class_accuracy':
-                    tf.metrics.mean_per_class_accuracy(
-                        labels_flat, predictions_flat, num_classes),
-                'metrics/event_accuracy': tf.metrics.recall(
-                    event_positions, correct_predictions),
-                'metrics/no_event_accuracy': tf.metrics.recall(
-                    no_event_positions, correct_predictions),
-                'metrics/perplexity': tf.metrics.mean(
-                    tf.exp(softmax_cross_entropy)),
-            })
+            names_to_tuples)
+
         for updates_op in update_ops.values():
           tf.add_to_collection('eval_ops', updates_op)
 
