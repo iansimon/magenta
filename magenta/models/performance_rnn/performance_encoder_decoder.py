@@ -59,6 +59,8 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
       return 3
     elif event.event_type == PerformanceEvent.SUSTAIN:
       return 4
+    else:
+      raise ValueError('Unknown event type: %s' % event.event_type)
 
   def category_name(self, category):
     if category == 0:
@@ -71,6 +73,8 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
       return 'velocity'
     elif category == 4:
       return 'sustain'
+    else:
+      raise ValueError('Unknown category: %s' % category)
 
   @property
   def num_classes(self):
