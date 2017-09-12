@@ -19,6 +19,7 @@ from __future__ import print_function
 
 # internal imports
 import six
+import numpy as np
 import tensorflow as tf
 import magenta
 
@@ -134,7 +135,9 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       no_event_positions = tf.to_float(tf.equal(labels_flat, no_event_label))
 
       categories_flat = tf.py_func(
-          encoder_decoder.labels_to_categories, [labels_flat], tf.int16)
+          lambda c: np.array(encoder_decoder.labels_to_categories(c), dtype=np.int16),
+          [labels_flat], tf.int16)
+      categories_flat.set_shape(labels_flat.get_shape())
 
       if mode == 'train':
         loss = tf.reduce_mean(softmax_cross_entropy)
