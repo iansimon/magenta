@@ -133,7 +133,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       event_positions = tf.to_float(tf.not_equal(labels_flat, no_event_label))
       no_event_positions = tf.to_float(tf.equal(labels_flat, no_event_label))
 
-      categories = tf.py_func(
+      categories_flat = tf.py_func(
           encoder_decoder.labels_to_categories, [labels_flat], tf.int16)
 
       if mode == 'train':
@@ -163,7 +163,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
 
         for category in range(num_categories):
           category_name = encoder_decoder.category_name(category)
-          category_positions = tf.to_float(tf.equal(labels_flat, category))
+          category_positions = tf.to_float(tf.equal(categories_flat, category))
           category_accuracy = (
               tf.reduce_sum(correct_predictions * category_positions) /
               tf.reduce_sum(category_positions))
@@ -188,7 +188,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
 
         for category in range(num_categories):
           category_name = encoder_decoder.category_name(category)
-          category_positions = tf.to_float(tf.equal(labels_flat, category))
+          category_positions = tf.to_float(tf.equal(categories_flat, category))
           names_to_tuples['metrics/category_accuracy/%s' % category_name] = (
               tf.metrics.recall(category_positions, correct_predictions))
 
