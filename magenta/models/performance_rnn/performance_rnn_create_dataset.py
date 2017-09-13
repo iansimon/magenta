@@ -163,13 +163,8 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
         name='PerformanceExtractor_' + mode)
     encoder_pipeline = EncoderPipeline(config, name='EncoderPipeline_' + mode)
 
-    # If we're modeling sustain explicitly in performances, no need to use the
-    # sustain pipeline to extend note end times.
-    if config.num_sustain_bins:
-      dag[stretch_pipeline] = partitioner[mode + '_performances']
-    else:
-      dag[sustain_pipeline] = partitioner[mode + '_performances']
-      dag[stretch_pipeline] = sustain_pipeline
+    dag[sustain_pipeline] = partitioner[mode + '_performances']
+    dag[stretch_pipeline] = sustain_pipeline
     dag[splitter] = stretch_pipeline
     dag[quantizer] = splitter
     dag[transposition_pipeline] = quantizer
