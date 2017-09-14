@@ -317,7 +317,7 @@ class Performance(events_lib.EventSequence):
     for note in sorted_notes:
       if note.quantized_start_step > current_step:
         # Shift time forward from the current step to this event.
-        while step > current_step + MAX_SHIFT_STEPS:
+        while note.quantized_start_step > current_step + MAX_SHIFT_STEPS:
           # We need to move further than the maximum shift size.
           performance_events.append(
               PerformanceEvent(event_type=PerformanceEvent.TIME_SHIFT,
@@ -325,8 +325,8 @@ class Performance(events_lib.EventSequence):
           current_step += MAX_SHIFT_STEPS
         performance_events.append(
             PerformanceEvent(event_type=PerformanceEvent.TIME_SHIFT,
-                             event_value=int(step - current_step)))
-        current_step = step
+                             event_value=int(note.quantized_start_step - current_step)))
+        current_step = note.quantized_start_step
 
       # If this note's duration is different from the current duration, change
       # the current duration.
@@ -341,7 +341,7 @@ class Performance(events_lib.EventSequence):
       # If we're using velocity and this note's velocity is different from the
       # current velocity, change the current velocity.
       if num_velocity_bins:
-        velocity_bin = velocity_to_bin(sorted_notes[idx].velocity)
+        velocity_bin = velocity_to_bin(note.velocity)
         if velocity_bin != current_velocity_bin:
           current_velocity_bin = velocity_bin
           performance_events.append(
@@ -350,8 +350,8 @@ class Performance(events_lib.EventSequence):
 
       # Add a performance event for this note.
       performance_events.append(
-          PerformanceEvent(event_type=NOTE,
-                           event_value=sorted_notes[idx].pitch))
+          PerformanceEvent(event_type=PerformanceEvent.NOTE,
+                           event_value=note.pitch))
 
     return performance_events
 
