@@ -148,7 +148,7 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
     stretch_pipeline = note_sequence_pipelines.StretchPipeline(
         stretch_factors, name='StretchPipeline_' + mode)
     splitter = note_sequence_pipelines.Splitter(
-        hop_size_seconds=30.0, name='Splitter_' + mode)
+        hop_size_seconds=20.0, name='Splitter_' + mode)
     quantizer = note_sequence_pipelines.Quantizer(
         steps_per_second=config.steps_per_second, name='Quantizer_' + mode)
     transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
