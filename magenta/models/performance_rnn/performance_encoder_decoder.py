@@ -27,11 +27,10 @@ NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
 
 # Value ranges for event types, as (event_type, min_value, max_value) tuples.
 EVENT_RANGES = [
-    (PerformanceEvent.NOTE_ON,
-     performance_lib.MIN_MIDI_PITCH, performance_lib.MAX_MIDI_PITCH),
-    (PerformanceEvent.NOTE_OFF,
+    (PerformanceEvent.NOTE,
      performance_lib.MIN_MIDI_PITCH, performance_lib.MAX_MIDI_PITCH),
     (PerformanceEvent.TIME_SHIFT, 1, performance_lib.MAX_SHIFT_STEPS),
+    (PerformanceEvent.DURATION, 1, performance_lib.NUM_DURATION_BINS)
 ]
 
 
