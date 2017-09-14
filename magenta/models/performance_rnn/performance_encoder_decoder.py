@@ -49,7 +49,7 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
     return 4
 
   def event_to_category(self, event):
-    if event.event_type == PerformanceEvent.NOTE_ON:
+    if event.event_type == PerformanceEvent.NOTE:
       return 0
     elif event.event_type == PerformanceEvent.TIME_SHIFT:
       return 1
