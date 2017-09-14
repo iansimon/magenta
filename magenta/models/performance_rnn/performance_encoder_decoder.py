@@ -46,19 +46,17 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
 
   @property
   def num_categories(self):
-    return 5
+    return 4
 
   def event_to_category(self, event):
     if event.event_type == PerformanceEvent.NOTE_ON:
       return 0
-    elif event.event_type == PerformanceEvent.NOTE_OFF:
-      return 1
     elif event.event_type == PerformanceEvent.TIME_SHIFT:
+      return 1
+    elif event.event_type == PerformanceEvent.DURATION:
       return 2
     elif event.event_type == PerformanceEvent.VELOCITY:
       return 3
-    elif event.event_type == PerformanceEvent.SUSTAIN:
-      return 4
     else:
       raise ValueError('Unknown event type: %s' % event.event_type)
 
@@ -66,13 +64,11 @@ class PerformanceOneHotEncoding(encoder_decoder.OneHotEncoding):
     if category == 0:
       return 'note-on'
     elif category == 1:
-      return 'note-off'
-    elif category == 2:
       return 'time-shift'
+    elif category == 2:
+      return 'duration'
     elif category == 3:
       return 'velocity'
-    elif category == 4:
-      return 'sustain'
     else:
       raise ValueError('Unknown category: %s' % category)
 
