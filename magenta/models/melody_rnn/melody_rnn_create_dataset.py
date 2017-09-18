@@ -25,6 +25,8 @@ import magenta
 
 from magenta.models.melody_rnn import melody_rnn_config_flags
 
+from magenta.music import self_similarity_lib
+
 from magenta.pipelines import dag_pipeline
 from magenta.pipelines import melody_pipelines
 from magenta.pipelines import note_sequence_pipelines
@@ -62,7 +64,7 @@ class EncoderPipeline(pipeline.Pipeline):
         input_type=magenta.music.Melody,
         output_type=tf.train.SequenceExample,
         name=name)
-    self._melody_encoder_decoder = config.encoder_decoder
+    self._encoder_decoder = config.encoder_decoder
     self._min_note = config.min_note
     self._max_note = config.max_note
     self._transpose_to_key = config.transpose_to_key
@@ -72,7 +74,9 @@ class EncoderPipeline(pipeline.Pipeline):
         self._min_note,
         self._max_note,
         self._transpose_to_key)
-    encoded = self._melody_encoder_decoder.encode(melody)
+    # Encode conditional on self-similarity.
+    self_similarity = self_similarity_lib.event_sequence_self_similarity(melody)
+    encoded = self._encoder_decoder.encode(self_similarity, melody)
     return [encoded]
 
 

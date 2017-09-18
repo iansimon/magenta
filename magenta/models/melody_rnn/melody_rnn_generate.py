@@ -77,6 +77,10 @@ tf.app.flags.DEFINE_float(
     'The quarters per minute to play generated output at. If a primer MIDI is '
     'given, the qpm from that will override this flag. If qpm is None, qpm '
     'will default to 120.')
+tf.app.flags.DEFINE_string(
+    'form', 'AABA',
+    'The melody form on which output will be conditioned. Each section will be '
+    'the same number of steps.')
 tf.app.flags.DEFINE_float(
     'temperature', 1.0,
     'The randomness of the generated melodies. 1.0 uses the unaltered softmax '
@@ -193,6 +197,9 @@ def run_with_flags(generator):
     generate_section = generator_options.generate_sections.add(
         start_time=0,
         end_time=total_seconds)
+
+  generator_options.args['form'].string_value = FLAGS.form
+
   generator_options.args['temperature'].float_value = FLAGS.temperature
   generator_options.args['beam_size'].int_value = FLAGS.beam_size
   generator_options.args['branch_factor'].int_value = FLAGS.branch_factor

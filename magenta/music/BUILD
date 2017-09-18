@@ -44,10 +44,21 @@ py_library(
         ":notebook_utils",
         ":pianoroll_encoder_decoder",
         ":pianoroll_lib",
+        ":self_similarity_lib",
         ":sequence_generator",
         ":sequence_generator_bundle",
         ":sequences_lib",
         ":testing_lib",
+    ],
+)
+
+py_library(
+    name = "self_similarity_lib",
+    srcs = ["self_similarity_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":encoder_decoder",
+        "//magenta/common:sequence_example_lib",
     ],
 )
 

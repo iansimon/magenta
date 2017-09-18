@@ -114,6 +114,7 @@ class MelodyRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
     # Extract generation arguments from generator options.
     arg_types = {
+        'form': lambda arg: arg.string_value,
         'temperature': lambda arg: arg.float_value,
         'beam_size': lambda arg: arg.int_value,
         'branch_factor': lambda arg: arg.int_value,

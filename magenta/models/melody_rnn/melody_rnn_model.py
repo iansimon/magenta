@@ -14,11 +14,13 @@
 """Melody RNN model."""
 
 import copy
+import itertools
 
 # internal imports
 import tensorflow as tf
 
 import magenta
+from magenta.music import self_similarity_lib
 from magenta.models.shared import events_rnn_model
 import magenta.music as mm
 
@@ -27,11 +29,23 @@ DEFAULT_MAX_NOTE = 84
 DEFAULT_TRANSPOSE_TO_KEY = 0
 
 
+def _form_to_self_similarity(form, num_steps):
+  """Convert song form to self-similarity matrix."""
+  if num_steps % len(form) != 0:
+    raise ValueError('num_steps must be a multiple of len(form)')
+  steps_per_section = num_steps / len(form)
+  labels = list(itertools.product(form, range(steps_per_section)))
+  return [[1.0 if label == prev_label else 0.0
+           for prev_label in labels[:i]]
+          for i, label in enumerate(labels)]
+
+
 class MelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
   """Class for RNN melody generation models."""
 
   def generate_melody(self, num_steps, primer_melody, temperature=1.0,
-                      beam_size=1, branch_factor=1, steps_per_iteration=1):
+                      beam_size=1, branch_factor=1, steps_per_iteration=1,
+                      form=None):
     """Generate a melody from a primer melody.
 
     Args:
@@ -46,6 +60,7 @@ class MelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
       branch_factor: An integer, beam search branch factor to use.
       steps_per_iteration: An integer, number of melody steps to take per beam
           search iteration.
+      form: Song form as a string.
 
     Returns:
       The generated Melody object (which begins with the provided primer
@@ -58,8 +73,10 @@ class MelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
         self._config.max_note,
         self._config.transpose_to_key)
 
+    self_similarity = _form_to_self_similarity(form, num_steps)
     melody = self._generate_events(num_steps, melody, temperature, beam_size,
-                                   branch_factor, steps_per_iteration)
+                                   branch_factor, steps_per_iteration,
+                                   control_events=self_similarity)
 
     melody.transpose(-transpose_amount)
 
@@ -132,6 +149,22 @@ class MelodyRnnConfig(events_rnn_model.EventSequenceRnnConfig):
 
 # Default configurations.
 default_configs = {
+    'self_similarity_rnn': MelodyRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='self_similarity_rnn',
+            description='Melody RNN with self-similarity.'),
+        self_similarity_lib.SelfSimilarityEncoderDecoder(
+            magenta.music.OneHotEventSequenceEncoderDecoder(
+                magenta.music.MelodyOneHotEncoding(
+                    min_note=DEFAULT_MIN_NOTE,
+                    max_note=DEFAULT_MAX_NOTE))),
+        tf.contrib.training.HParams(
+            batch_size=128,
+            rnn_layer_sizes=[128, 128],
+            dropout_keep_prob=0.5,
+            clip_norm=5,
+            learning_rate=0.001)),
+
     'basic_rnn': MelodyRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(
             id='basic_rnn',
