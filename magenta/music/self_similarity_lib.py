@@ -107,7 +107,7 @@ class SelfSimilarityEncoderDecoder(
 
     inputs_batch = []
     for self_similarity, base_events in zip(
-        self_similarity, base_event_sequences):
+        self_similarity_sequences, base_event_sequences):
       if len(self_similarity) <= len(base_events):
         raise ValueError('self-similarity sequence must be longer than base '
                          'event sequence (%d self-similarities but %d base '
