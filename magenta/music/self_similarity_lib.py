@@ -67,7 +67,7 @@ class SelfSimilarityEncoderDecoder(
 
     self_similarity_input = [0.0] * self._base_encoder_decoder.num_classes
     total_similarity = 0.0
-    for i in range(position + 1):
+    for i in range(position):
       idx = self._base_encoder_decoder.events_to_label(base_events, i)
       self_similarity_input[idx] += similarities[i]
       total_similarity += similarities[i]
