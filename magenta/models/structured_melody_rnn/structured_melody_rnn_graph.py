@@ -225,6 +225,8 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       no_event_positions = tf.to_float(tf.equal(labels_flat, no_event_label))
 
       if mode == 'train':
+        tf.summary.image('self-similarity', tf.expand_dims(self_similarity, -1))
+
         loss = tf.reduce_mean(softmax_cross_entropy)
         perplexity = tf.exp(loss)
         accuracy = tf.reduce_mean(correct_predictions)
