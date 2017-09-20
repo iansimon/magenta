@@ -114,25 +114,26 @@ def encode_input_windows(input_windows, batch_size, input_size, window_size,
   return tf.squeeze(encodings, axis=2)
 
 
-def similarity_weighted_attention(inputs, self_similarity):
-  """Computes similarity-weighted softmax attention over inputs.
+def similarity_weighted_attention(labels, self_similarity, num_classes):
+  """Computes similarity-weighted softmax attention over past labels.
 
-  For each step, computes an attention-weighted sum of the input at prior steps,
-  where attention is determined by self-similarity.
+  For each step, computes an attention-weighted sum of the one-hot-encoded label
+  at prior steps, where attention is determined by self-similarity.
 
   Args:
-    inputs: A tensor of input sequences with shape
-        `[batch_size, num_steps, input_size]`.
+    labels: A tensor of label sequences with shape `[batch_size, num_steps]`.
     self_similarity: A tensor of input self-similarities based on encoded
         windows, with shape `[batch_size, num_steps, num_steps]`.
+    num_classes: The number of classes to use in the one-hot encoding.
 
   Returns:
-    A tensor with shape `[batch_size, num_steps, input_size]` containing the
-    similarity-weighted attention input for each step.
+    A tensor with shape `[batch_size, num_steps, num_classes]` containing the
+    similarity-weighted attention over labels for each step.
   """
+  one_hot_labels = tf.one_hot(labels, num_classes)
   ordered_self_similarity = tf.matrix_band_part(self_similarity, -1, 0)
   attention = tf.nn.softmax(ordered_self_similarity)
-  return tf.matmul(attention, inputs)
+  return tf.matmul(attention, one_hot_labels)
 
 
 def build_graph(mode, config, sequence_example_file_paths=None):
@@ -188,8 +189,9 @@ def build_graph(mode, config, sequence_example_file_paths=None):
         hparams.encoding_size)
     self_similarity = tf.matmul(encodings, encodings, transpose_b=True)
 
-    # Compute and append similarity-weighted attention inputs.
-    attention_inputs = similarity_weighted_attention(inputs, self_similarity)
+    # Compute and append similarity-weighted attention on past labels.
+    attention_inputs = similarity_weighted_attention(
+        labels, self_similarity, num_classes)
     combined_inputs = tf.concat([inputs, attention_inputs], axis=2)
 
     cell = make_rnn_cell(
