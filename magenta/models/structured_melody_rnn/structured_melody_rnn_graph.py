@@ -237,7 +237,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
 
       if mode == 'train':
         tf.summary.image('self-similarity', tf.expand_dims(self_similarity, -1))
-        tf.summary.image('combined_inputs', tf.expand_dims(tf.transpose(combined_inputs, [0, 2, 1, 3]), -1))
+        tf.summary.image('combined_inputs', tf.expand_dims(tf.transpose(combined_inputs, [0, 2, 1]), -1))
 
         loss = tf.reduce_mean(softmax_cross_entropy)
         perplexity = tf.exp(loss)
