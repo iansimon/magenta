@@ -83,7 +83,7 @@ def extract_input_windows(inputs, batch_size, input_size, window_size):
       padded_inputs, ksizes=[1, window_size, input_size, 1],
       strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='VALID')
 
-  # TODO: do we need to transpose the last two dimensions?
+  # TODO(iansimon): do we need to transpose the last two dimensions?
   return tf.reshape(input_windows, [batch_size, -1, input_size, window_size])
 
 
@@ -130,10 +130,21 @@ def similarity_weighted_attention(labels, self_similarity, num_classes):
     A tensor with shape `[batch_size, num_steps, num_classes]` containing the
     similarity-weighted attention over labels for each step.
   """
-  one_hot_labels = tf.one_hot(labels, num_classes)
-  ordered_self_similarity = tf.matrix_band_part(self_similarity, -1, 0)
-  attention = tf.nn.softmax(ordered_self_similarity)
-  return tf.matmul(attention, one_hot_labels)
+  steps = tf.range(tf.shape(labels)[1])
+  permuted_self_similarity = tf.transpose(self_similarity, [1, 0, 2])
+
+  def similarity_to_attention(enumerated_similarity):
+    step, sim = enumerated_similarity
+    return tf.concat(
+        [tf.nn.softmax(sim[:, :step]), tf.zeros_like(sim[:, step:])], axis=-1)
+
+  permuted_attention = tf.map_fn(
+      similarity_to_attention, (steps, permuted_self_similarity),
+      dtype=tf.float32)
+  attention = tf.transpose(permuted_attention, [1, 0, 2])
+  #tf.summary.image('attention', tf.expand_dims(attention, -1))
+
+  return tf.matmul(attention, tf.one_hot(labels, num_classes))
 
 
 def build_graph(mode, config, sequence_example_file_paths=None):
@@ -226,6 +237,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
 
       if mode == 'train':
         tf.summary.image('self-similarity', tf.expand_dims(self_similarity, -1))
+        tf.summary.image('combined_inputs', tf.expand_dims(tf.transpose(combined_inputs, [0, 2, 1, 3]), -1))
 
         loss = tf.reduce_mean(softmax_cross_entropy)
         perplexity = tf.exp(loss)
