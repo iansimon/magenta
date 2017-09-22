@@ -224,8 +224,7 @@ def main(unused_argv):
   bundle = get_bundle()
 
   config_id = bundle.generator_details.id if bundle else FLAGS.config
-  config = performance_model.default_configs[config_id]
-  config.hparams.parse(FLAGS.hparams)
+  config = structured_melody_rnn_model.default_configs[config_id]
   # Having too large of a batch size will slow generation down unnecessarily.
   config.hparams.batch_size = min(
       config.hparams.batch_size, FLAGS.beam_size * FLAGS.branch_factor)

@@ -38,8 +38,11 @@ py_library(
         # internal notebook binary
     ],
     deps = [
+        ":structured_melody_rnn_graph",
         "//magenta",
         "//magenta/models/shared:events_rnn_model",
+        # numpy dep
+        # tensorflow dep
     ],
 )
 
