@@ -191,8 +191,8 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
       logliks[i:j - pad_amt] += batch_loglik[:j - i - pad_amt]
 
     # Construct input buffers for next step.
-    for prev_inputs, input_buffer in zip(inputs, input_buffers):
-      input_buffer = input_buffer[1:] + [prev_inputs[-1]]
+    for i in range(num_seqs):
+      input_buffers[i] = input_buffers[i][1:] + [inputs[i][-1]]
 
     # Construct inputs for next step.
     next_inputs = self._config.encoder_decoder.get_inputs_batch(
@@ -393,8 +393,8 @@ default_configs = {
         tf.contrib.training.HParams(
             batch_size=128,
             window_size=16,
-            encoding_size=64,
-            rnn_layer_sizes=[128, 128],
+            encoding_size=512,
+            rnn_layer_sizes=[256, 256, 256],
             dropout_keep_prob=0.5,
             clip_norm=5,
             learning_rate=0.001)),
