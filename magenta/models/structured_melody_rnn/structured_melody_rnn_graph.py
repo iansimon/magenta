@@ -58,54 +58,28 @@ def make_rnn_cell(rnn_layer_sizes,
   return cell
 
 
-def extract_input_windows(inputs, batch_size, input_size, window_size):
-  """Extracts sliding windows from a batch of input sequences.
+def encode_rnn_outputs(rnn_outputs, batch_size, input_size, encoding_size):
+  """Encodes a sequence of RNN outputs using shared weights.
 
   Args:
-    inputs: A tensor of input sequences with shape
-        `[batch_size, num_steps, input_size]`.
+    rnn_states: A tensor of input RNN states with shape
+        `[batch_size, num_steps, num_units]`.
     batch_size: The number of sequences per batch.
-    input_size: The size of the input representation per step.
-    window_size: The number of steps to use per window.
-
-  Returns:
-    A tensor with shape
-    `[batch_size, num_steps - window_size + 1, input_size, window_size]`
-    containing the input window at each step.
-  """
-  input_windows = tf.extract_image_patches(
-      tf.expand_dims(inputs, -1), ksizes=[1, window_size, input_size, 1],
-      strides=[1, 1, 1, 1], rates=[1, 1, 1, 1], padding='VALID')
-
-  # TODO(iansimon): do we need to transpose the last two dimensions?
-  return tf.reshape(input_windows, [batch_size, -1, input_size, window_size])
-
-
-def encode_input_windows(input_windows, batch_size, input_size, window_size,
-                         encoding_size):
-  """Encodes a sequence of input windows using shared weights.
-
-  Args:
-    input_windows: A tensor of input windows with shape
-        `[batch_size, num_steps, input_size, window_size]`.
-    batch_size: The number of sequences per batch.
-    input_size: The size of the input representation per step.
-    window_size: The number of steps in an input window.
+    input_size: The number of "input" RNN outputs.
     encoding_size: The size of the final encoding, used to compute self-
         similarities.
 
   Returns:
     A tensor with shape `[batch_size, num_steps, encoding_size]` containing the
-    encoded input window at each step.
+    encoded RNN output at each step.
   """
-  input_windows_flat = tf.reshape(
-      input_windows, [batch_size, -1, input_size * window_size, 1])
+  rnn_outputs_flat = tf.expand_dims(rnn_outputs, -1)
 
   # This isn't really a 2D convolution, but a fully-connected layer operating on
-  # flattened windows.
+  # RNN outputs.
   encodings = tf.contrib.layers.conv2d(
-      input_windows_flat, encoding_size, [1, input_size * window_size],
-      padding='VALID', activation_fn=tf.nn.relu)
+      rnn_outputs_flat, encoding_size, [1, input_size], padding='VALID',
+      activation_fn=tf.nn.relu)
 
   return tf.squeeze(encodings, axis=2)
 
@@ -187,9 +161,6 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       inputs, labels, lengths = magenta.common.get_padded_batch(
           sequence_example_file_paths, hparams.batch_size, input_size,
           shuffle=mode == 'train')
-      # When training we get full inputs, so to form windows we pad with zeros.
-      input_buffer = tf.zeros(
-          [hparams.batch_size, hparams.window_size - 1, input_size])
       # And there are no past encodings.
       past_encodings = tf.zeros([hparams.batch_size, 0, hparams.encoding_size])
       # And at no point can we attend to the final label.
@@ -198,24 +169,28 @@ def build_graph(mode, config, sequence_example_file_paths=None):
     elif mode == 'generate':
       inputs = tf.placeholder(tf.float32, [hparams.batch_size, None,
                                            input_size])
-      # At generation time we form windows using past inputs.
-      input_buffer = tf.placeholder(tf.float32, [hparams.batch_size,
-                                                 hparams.window_size - 1,
-                                                 input_size])
       # When generating, we need to attend over all past labels.
       labels = tf.placeholder(tf.int64, [hparams.batch_size, None])
       past_encodings = tf.placeholder(tf.float32, [hparams.batch_size, None,
                                                    hparams.encoding_size])
       target_labels = labels
 
-    # Extract sliding windows from the input sequences.
-    padded_inputs = tf.concat([input_buffer, inputs], axis=1)
-    input_windows = extract_input_windows(
-        padded_inputs, hparams.batch_size, input_size, hparams.window_size)
+    # Run a single RNN that will be used for similarity embeddings.
+    with tf.variable_scope('sim'):
+      sim_cell = make_rnn_cell(
+          hparams.rnn_layer_sizes,
+          dropout_keep_prob=(
+              1.0 if mode == 'generate' else hparams.dropout_keep_prob),
+          attn_length=(
+              hparams.attn_length if hasattr(hparams, 'attn_length') else 0))
+      sim_initial_state = sim_cell.zero_state(hparams.batch_size, tf.float32)
+      sim_outputs, sim_final_state = tf.nn.dynamic_rnn(
+          sim_cell, inputs, sequence_length=lengths,
+          initial_state=sim_initial_state, swap_memory=True)
 
-    # Encode input windows.
-    encodings = encode_input_windows(
-        input_windows, hparams.batch_size, input_size, hparams.window_size,
+    # Encode RNN states.
+    encodings = encode_rnn_outputs(
+        sim_outputs, hparams.batch_size, hparams.rnn_layer_sizes[-1],
         hparams.encoding_size)
 
     # Compute similarity between current encodings and all past and current
@@ -228,18 +203,18 @@ def build_graph(mode, config, sequence_example_file_paths=None):
         target_labels, self_similarity, num_classes)
     combined_inputs = tf.concat([inputs, attention_inputs], axis=2)
 
-    cell = make_rnn_cell(
-        hparams.rnn_layer_sizes,
-        dropout_keep_prob=(
-            1.0 if mode == 'generate' else hparams.dropout_keep_prob),
-        attn_length=(
-            hparams.attn_length if hasattr(hparams, 'attn_length') else 0))
-
-    initial_state = cell.zero_state(hparams.batch_size, tf.float32)
-
-    outputs, final_state = tf.nn.dynamic_rnn(
-        cell, combined_inputs, sequence_length=lengths,
-        initial_state=initial_state, swap_memory=True)
+    # Now run the "real" RNN.
+    with tf.variable_scope('main'):
+      cell = make_rnn_cell(
+          hparams.rnn_layer_sizes,
+          dropout_keep_prob=(
+              1.0 if mode == 'generate' else hparams.dropout_keep_prob),
+          attn_length=(
+              hparams.attn_length if hasattr(hparams, 'attn_length') else 0))
+      initial_state = cell.zero_state(hparams.batch_size, tf.float32)
+      outputs, final_state = tf.nn.dynamic_rnn(
+          cell, combined_inputs, sequence_length=lengths,
+          initial_state=initial_state, swap_memory=True)
 
     outputs_flat = magenta.common.flatten_maybe_padded_sequences(
         outputs, lengths)
@@ -318,7 +293,6 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       softmax = tf.reshape(softmax_flat, [hparams.batch_size, -1, num_classes])
 
       tf.add_to_collection('inputs', inputs)
-      tf.add_to_collection('input_buffer', input_buffer)
       tf.add_to_collection('labels', labels)
       tf.add_to_collection('past_encodings', past_encodings)
       tf.add_to_collection('encodings', encodings)
@@ -326,6 +300,10 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       tf.add_to_collection('softmax', softmax)
 
       # Flatten state tuples for metagraph compatibility.
+      for state in tf_nest.flatten(sim_initial_state):
+        tf.add_to_collection('sim_initial_state', state)
+      for state in tf_nest.flatten(sim_final_state):
+        tf.add_to_collection('sim_final_state', state)
       for state in tf_nest.flatten(initial_state):
         tf.add_to_collection('initial_state', state)
       for state in tf_nest.flatten(final_state):

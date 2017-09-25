@@ -392,10 +392,9 @@ default_configs = {
                 max_note=DEFAULT_MAX_NOTE)),
         tf.contrib.training.HParams(
             batch_size=128,
-            window_size=16,
-            encoding_size=512,
-            rnn_layer_sizes=[256, 256, 256],
-            dropout_keep_prob=0.5,
+            encoding_size=64,
+            rnn_layer_sizes=[128],
+            dropout_keep_prob=1.0,
             clip_norm=5,
             learning_rate=0.001)),
 }
