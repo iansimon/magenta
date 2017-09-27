@@ -36,7 +36,7 @@ DEFAULT_TRANSPOSE_TO_KEY = 0
 # Model state when generating event sequences with self-similarity.
 ModelState = collections.namedtuple(
     'ModelState',
-    ['inputs', 'input_buffer', 'labels', 'past_encodings', 'rnn_state'])
+    ['inputs', 'labels', 'past_encodings', 'sim_rnn_state', 'rnn_state'])
 
 
 class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
@@ -45,8 +45,8 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
   def _build_graph_for_generation(self):
     return structured_melody_rnn_graph.build_graph('generate', self._config)
 
-  def _generate_step_for_batch(self, event_sequences, inputs, input_buffer,
-                               labels, past_encodings, initial_state,
+  def _generate_step_for_batch(self, event_sequences, inputs, labels,
+                               past_encodings, sim_initial_state, initial_state,
                                temperature):
     """Extends a batch of event sequences by a single step each.
 
@@ -58,10 +58,10 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
           to `self._batch_size()`. These are extended by this method.
       inputs: A Python list of model inputs, with length equal to
           `self._batch_size()`.
-      input_buffer: ???
       labels: ???
       past_encodings: A numpy array of past encodings, with shape
           `[batch_size, num_labels, encoding_size]`.
+      sim_initial_state: ??
       initial_state: A numpy array containing the initial RNN state, where
           `initial_state.shape[0]` is equal to `self._batch_size()`.
       temperature: The softmax temperature.
@@ -70,6 +70,7 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
       labels: A list of
       encodings: A numpy array of encodings, with shape
           `[batch_size, num_inputs, encoding_size]`.
+      sim_final_state: ???
       final_state: The final RNN state, a numpy array the same size as
           `initial_state`.
       loglik: The log-likelihood of the chosen softmax value for each event
@@ -81,25 +82,30 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
     assert len(event_sequences) == self._batch_size()
 
     graph_inputs = self._session.graph.get_collection('inputs')[0]
-    graph_input_buffer = self._session.graph.get_collection('input_buffer')[0]
     graph_labels = self._session.graph.get_collection('labels')[0]
     graph_past_encodings = self._session.graph.get_collection(
         'past_encodings')[0]
     graph_encodings = self._session.graph.get_collection('encodings')[0]
+    graph_sim_initial_state = self._session.graph.get_collection(
+        'sim_initial_state')
+    graph_sim_final_state = self._session.graph.get_collection(
+        'sim_final_state')
     graph_initial_state = self._session.graph.get_collection('initial_state')
     graph_final_state = self._session.graph.get_collection('final_state')
     graph_softmax = self._session.graph.get_collection('softmax')[0]
     graph_temperature = self._session.graph.get_collection('temperature')
 
-    feed_dict = {graph_inputs: inputs, graph_input_buffer: input_buffer,
-                 graph_labels: labels, graph_past_encodings: past_encodings,
+    feed_dict = {graph_inputs: inputs, graph_labels: labels,
+                 graph_past_encodings: past_encodings,
+                 tuple(graph_sim_initial_state): sim_initial_state,
                  tuple(graph_initial_state): initial_state}
     # For backwards compatibility, we only try to pass temperature if the
     # placeholder exists in the graph.
     if graph_temperature:
       feed_dict[graph_temperature[0]] = temperature
-    encodings, final_state, softmax = self._session.run(
-        [graph_encodings, graph_final_state, graph_softmax], feed_dict)
+    encodings, sim_final_state, final_state, softmax = self._session.run(
+        [graph_encodings, graph_sim_final_state, graph_final_state,
+         graph_softmax], feed_dict)
 
     if softmax.shape[1] > 1:
       # The inputs batch is longer than a single step, so we also want to
@@ -117,7 +123,7 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
     for i in range(len(event_sequences)):
       labels[i].append(indices[i])
 
-    return labels, encodings, final_state, loglik + np.log(p)
+    return labels, encodings, sim_final_state, final_state, loglik + np.log(p)
 
   def _generate_step(self, event_sequences, model_states, logliks, temperature):
     """Extends a list of event sequences by a single step each.
@@ -150,13 +156,15 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
 
     # Unpack the model states.
     inputs = [model_state.inputs for model_state in model_states]
-    input_buffers = [model_state.input_buffer for model_state in model_states]
     labels = [model_state.labels for model_state in model_states]
     past_encodings = [model_state.past_encodings
                       for model_state in model_states]
+    sim_initial_states = [model_state.sim_rnn_state
+                          for model_state in model_states]
     initial_states = [model_state.rnn_state for model_state in model_states]
 
     encodings = []
+    sim_final_states = []
     final_states = []
     logliks = np.array(logliks, dtype=np.float32)
 
@@ -165,44 +173,44 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
     padded_event_sequences = event_sequences + [
         copy.deepcopy(event_sequences[-1]) for _ in range(pad_amt)]
     padded_inputs = inputs + [inputs[-1]] * pad_amt
-    padded_input_buffers = input_buffers + [input_buffers[-1]] * pad_amt
     padded_labels = labels + [copy.deepcopy(labels[-1]) for _ in range(pad_amt)]
     padded_past_encodings = past_encodings + [past_encodings[-1]] * pad_amt
+    padded_sim_initial_states = sim_initial_states + [
+        sim_initial_states[-1]] * pad_amt
     padded_initial_states = initial_states + [initial_states[-1]] * pad_amt
 
     for b in range(num_batches):
       i, j = b * batch_size, (b + 1) * batch_size
       pad_amt = max(0, j - num_seqs)
       # Generate a single step for one batch of event sequences.
-      batch_labels, batch_encodings, batch_final_state, batch_loglik = (
+      batch_labels, batch_encodings, batch_sim_final_state, batch_final_state, batch_loglik = (
           self._generate_step_for_batch(
               padded_event_sequences[i:j],
               padded_inputs[i:j],
-              padded_input_buffers[i:j],
               padded_labels[i:j],
               padded_past_encodings[i:j],
+              state_util.batch(padded_sim_initial_states[i:j], batch_size),
               state_util.batch(padded_initial_states[i:j], batch_size),
               temperature))
       encodings += [np.concatenate([past_encoding, encoding], axis=0)
                     for past_encoding, encoding
                     in zip(padded_past_encodings[i:j], batch_encodings)]
+      sim_final_states += state_util.unbatch(
+          batch_sim_final_state, batch_size)[:j - i - pad_amt]
       final_states += state_util.unbatch(
           batch_final_state, batch_size)[:j - i - pad_amt]
       logliks[i:j - pad_amt] += batch_loglik[:j - i - pad_amt]
-
-    # Construct input buffers for next step.
-    for i in range(num_seqs):
-      input_buffers[i] = input_buffers[i][1:] + [inputs[i][-1]]
 
     # Construct inputs for next step.
     next_inputs = self._config.encoder_decoder.get_inputs_batch(
         event_sequences)
 
     model_states = [
-        ModelState(inputs=inputs, input_buffer=input_buffer, labels=past_labels,
-                   past_encodings=past_encodings, rnn_state=final_state)
-        for inputs, input_buffer, past_labels, past_encodings, final_state
-        in zip(next_inputs, input_buffers, labels, encodings, final_states)]
+        ModelState(inputs=inputs, labels=past_labels,
+                   past_encodings=past_encodings, sim_rnn_state=sim_final_state,
+                   rnn_state=final_state)
+        for inputs, past_labels, past_encodings, sim_final_state, final_state
+        in zip(next_inputs, labels, encodings, sim_final_states, final_states)]
 
     return event_sequences, model_states, logliks
 
@@ -247,12 +255,15 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
     # buffer (all zeroes) and past encodings (empty).
     inputs = self._config.encoder_decoder.get_inputs_batch(
         event_sequences, full_length=True)
-    input_buffer = [[0.0] * self._config.encoder_decoder.input_size
-                    for _ in range(self._config.hparams.window_size - 1)]
     labels = [self._config.encoder_decoder.events_to_label(primer_events, i)
               for i in range(1, len(primer_events))]
     past_encodings = np.zeros([0, self._config.hparams.encoding_size],
                               dtype=np.float32)
+
+    graph_sim_initial_state = self._session.graph.get_collection(
+        'sim_initial_state')
+    sim_initial_states = state_util.unbatch(
+        self._session.run(graph_sim_initial_state))
 
     graph_initial_state = self._session.graph.get_collection('initial_state')
     initial_states = state_util.unbatch(self._session.run(graph_initial_state))
@@ -261,8 +272,8 @@ class StructuredMelodyRnnModel(events_rnn_model.EventSequenceRnnModel):
     # inputs to feed the model, and the current RNN state. We start out with the
     # initial full inputs batch and the zero state.
     initial_state = ModelState(
-        inputs=inputs[0], input_buffer=input_buffer, labels=labels,
-        past_encodings=past_encodings, rnn_state=initial_states[0])
+        inputs=inputs[0], labels=labels, past_encodings=past_encodings,
+        sim_rnn_state=sim_initial_states[0], rnn_state=initial_states[0])
 
     events, _, loglik = beam_search(
         initial_sequence=event_sequences[0],
