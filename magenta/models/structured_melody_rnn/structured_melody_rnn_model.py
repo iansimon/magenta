@@ -30,7 +30,7 @@ import magenta.music as mm
 
 DEFAULT_MIN_NOTE = 48
 DEFAULT_MAX_NOTE = 84
-DEFAULT_TRANSPOSE_TO_KEY = 0
+DEFAULT_TRANSPOSE_TO_KEY = None
 
 
 # Model state when generating event sequences with self-similarity.
@@ -353,10 +353,7 @@ class StructuredMelodyRnnConfig(events_rnn_model.EventSequenceRnnConfig):
   the model and then transposed back into their original range after the
   melodies have been extended, the location of the range is somewhat
   arbitrary, but the size of the range determines the possible size of the
-  generated melodies range. `transpose_to_key` should be set to the key
-  that if melodies were transposed into that key, they would best sit
-  between `min_note` and `max_note` with having as few notes outside that
-  range.
+  generated melodies range.
 
   Attributes:
     details: The GeneratorDetails message describing the config.
@@ -403,7 +400,7 @@ default_configs = {
                 max_note=DEFAULT_MAX_NOTE)),
         tf.contrib.training.HParams(
             batch_size=128,
-            encoding_size=128,
+            encoding_sizes=[128, 128],
             rnn_layer_sizes=[256, 256],
             dropout_keep_prob=1.0,
             clip_norm=5,

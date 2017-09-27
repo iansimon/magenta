@@ -97,8 +97,12 @@ def get_pipeline(config, eval_ratio):
   for mode in ['eval', 'training']:
     time_change_splitter = note_sequence_pipelines.TimeChangeSplitter(
         name='TimeChangeSplitter_' + mode)
+    bar_splitter = note_sequence_pipelines.BarSplitter(
+        hop_size_bars=32, name='BarSplitter_' + mode)
     quantizer = note_sequence_pipelines.Quantizer(
         steps_per_quarter=config.steps_per_quarter, name='Quantizer_' + mode)
+    transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
+        range(-6, 6), name='TranspositionPipeline_' + mode)
     melody_extractor = melody_pipelines.MelodyExtractor(
         min_bars=7, max_steps=512, min_unique_pitches=5,
         gap_bars=1.0, ignore_polyphonic_notes=False,
@@ -106,8 +110,14 @@ def get_pipeline(config, eval_ratio):
     encoder_pipeline = EncoderPipeline(config, name='EncoderPipeline_' + mode)
 
     dag[time_change_splitter] = partitioner[mode + '_melodies']
-    dag[quantizer] = time_change_splitter
-    dag[melody_extractor] = quantizer
+    dag[bar_splitter] = time_change_splitter
+    dag[quantizer] = bar_splitter
+    if mode == 'eval':
+      # Don't do augmentation in eval.
+      dag[melody_extractor] = quantizer
+    else:
+      dag[transposition_pipeline] = quantizer
+      dag[melody_extractor] = transposition_pipeline
     dag[encoder_pipeline] = melody_extractor
     dag[dag_pipeline.DagOutput(mode + '_melodies')] = encoder_pipeline
 
