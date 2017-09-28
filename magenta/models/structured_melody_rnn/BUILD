@@ -75,18 +75,6 @@ py_binary(
     ],
 )
 
-py_test(
-    name = "structured_melody_rnn_create_dataset_test",
-    srcs = ["structured_melody_rnn_create_dataset_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":structured_melody_rnn_create_dataset",
-        ":structured_melody_rnn_model",
-        "//magenta",
-        # tensorflow dep
-    ],
-)
-
 py_library(
     name = "structured_melody_rnn_graph",
     srcs = ["structured_melody_rnn_graph.py"],

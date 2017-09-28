@@ -401,7 +401,7 @@ default_configs = {
         tf.contrib.training.HParams(
             batch_size=128,
             encoding_sizes=[128, 128],
-            rnn_layer_sizes=[256, 256],
+            rnn_layer_sizes=[[256], [256]],
             dropout_keep_prob=1.0,
             clip_norm=5,
             learning_rate=0.001)),

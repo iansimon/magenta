@@ -27,7 +27,6 @@ from tensorflow.python.util import nest as tf_nest
 
 def make_rnn_cell(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
-                  attn_length=0,
                   base_cell=tf.contrib.rnn.BasicLSTMCell):
   """Makes a RNN cell from the given hyperparameters.
 
@@ -36,7 +35,6 @@ def make_rnn_cell(rnn_layer_sizes,
         RNN.
     dropout_keep_prob: The float probability to keep the output of any given
         sub-cell.
-    attn_length: The size of the attention vector.
     base_cell: The base tf.contrib.rnn.RNNCell to use for sub-cells.
 
   Returns:
@@ -45,10 +43,6 @@ def make_rnn_cell(rnn_layer_sizes,
   cells = []
   for num_units in rnn_layer_sizes:
     cell = base_cell(num_units)
-    if attn_length and not cells:
-      # Add attention wrapper to first layer.
-      cell = tf.contrib.rnn.AttentionCellWrapper(
-          cell, attn_length, state_is_tuple=True)
     cell = tf.contrib.rnn.DropoutWrapper(
         cell, output_keep_prob=dropout_keep_prob)
     cells.append(cell)
@@ -84,43 +78,68 @@ def encode_rnn_outputs(rnn_outputs, batch_size, input_size, encoding_size):
   return tf.squeeze(encodings, axis=2)
 
 
-def similarity_weighted_attention(labels, self_similarity, num_classes):
-  """Computes similarity-weighted softmax attention over past labels.
+def similarity_weighted_attention(targets, self_similarity):
+  """Computes similarity-weighted softmax attention over past inputs.
 
-  For each step, computes an attention-weighted sum of the one-hot-encoded label
-  at prior steps, where attention is determined by self-similarity.
-
-  The final label step is assumed to immediately precede the final input step,
-  i.e. the final input step can attend to all labels.
+  For each step, computes an attention-weighted sum of the input at prior steps,
+  where attention is determined by self-similarity.
 
   Args:
-    labels: A tensor of label sequences with shape
-        `[batch_size, num_label_steps]`.
+    targets: A tensor of input sequences with shape
+        `[batch_size, num_target_steps, target_size]`.
     self_similarity: A tensor of input self-similarities based on encoded
-        windows, with shape `[batch_size, num_input_steps, num_label_steps]`.
-    num_classes: The number of classes to use in the one-hot encoding.
+        windows, with shape `[batch_size, num_input_steps, num_target_steps]`.
 
   Returns:
-    A tensor with shape `[batch_size, num_input_steps, num_classes]` containing
-    the similarity-weighted attention over labels for each step.
+    A tensor with shape `[batch_size, num_input_steps, target_size]` containing
+    the similarity-weighted attention over targets for each step.
   """
   num_input_steps = tf.shape(self_similarity)[1]
-  num_label_steps = tf.shape(self_similarity)[2]
+  num_target_steps = tf.shape(self_similarity)[2]
 
-  steps = tf.range(num_label_steps - num_input_steps + 1, num_label_steps + 1)
-  permuted_self_similarity = tf.transpose(self_similarity, [1, 0, 2])
+  steps = tf.range(num_target_steps - num_input_steps + 1, num_target_steps + 1)
+  transposed_self_similarity = tf.transpose(self_similarity, [1, 0, 2])
 
   def similarity_to_attention(enumerated_similarity):
     step, sim = enumerated_similarity
     return tf.concat(
         [tf.nn.softmax(sim[:, :step]), tf.zeros_like(sim[:, step:])], axis=-1)
 
-  permuted_attention = tf.map_fn(
-      similarity_to_attention, (steps, permuted_self_similarity),
+  transposed_attention = tf.map_fn(
+      similarity_to_attention, (steps, transposed_self_similarity),
       dtype=tf.float32)
-  attention = tf.transpose(permuted_attention, [1, 0, 2])
+  attention = tf.transpose(transposed_attention, [1, 0, 2])
 
-  return tf.matmul(attention, tf.one_hot(labels, num_classes))
+  return tf.matmul(attention, targets)
+
+
+def self_similarity_layer(inputs, lengths, past_targets, past_encodings,
+                          rnn_layer_sizes, dropout_keep_prob, batch_size,
+                          encoding_size):
+  """SKDJFLKSJDLFKSJLK"""
+  # Run an RNN over the inputs.
+  cell = make_rnn_cell(rnn_layer_sizes, dropout_keep_prob)
+  initial_state = cell.zero_state(batch_size, tf.float32)
+  outputs, final_state = tf.nn.dynamic_rnn(
+      cell, inputs, sequence_length=lengths, initial_state=initial_state,
+      swap_memory=True)
+
+  # Encode the RNN outputs.
+  encodings = encode_rnn_outputs(
+      outputs, batch_size, rnn_layer_sizes[-1], encoding_size)
+
+  # Compute similarity between current encodings and all past and current
+  # encodings except the most recent.
+  target_encodings = tf.concat([past_encodings, encodings[:, :-1, :]], axis=1)
+  self_similarity = tf.matmul(encodings, target_encodings, transpose_b=True)
+
+  # Compute and append similarity-weighted attention on all targets.
+  targets = tf.concat([past_targets, inputs[:, 1:, :]], axis=1)
+  attention_outputs = similarity_weighted_attention(targets, self_similarity)
+  combined_outputs = tf.concat([outputs, attention_outputs], axis=2)
+
+  return (
+      combined_outputs, initial_state, final_state, encodings, self_similarity)
 
 
 def build_graph(mode, config, sequence_example_file_paths=None):
@@ -148,73 +167,76 @@ def build_graph(mode, config, sequence_example_file_paths=None):
   hparams = config.hparams
   encoder_decoder = config.encoder_decoder
 
+  if len(hparams.rnn_layer_sizes) != len(hparams.encoding_sizes):
+    raise ValueError(
+        'inconsistent number of RNN and encoding layers: %d vs %d' % (
+            len(hparams.rnn_layer_sizes), len(hparams.encoding_sizes)))
+
   tf.logging.info('hparams = %s', hparams.values())
 
   input_size = encoder_decoder.input_size
   num_classes = encoder_decoder.num_classes
   no_event_label = encoder_decoder.default_event_label
 
+  num_layers = len(hparams.rnn_layer_sizes)
+
+  layer_input_sizes = [input_size]
+  for layer in range(num_layers - 1):
+    layer_input_sizes.append(
+        layer_input_sizes[-1] + hparams.rnn_layer_sizes[layer][-1])
+
   with tf.Graph().as_default() as graph:
     inputs, labels, lengths = None, None, None
+
+    past_targets = []
+    past_encodings = []
 
     if mode == 'train' or mode == 'eval':
       inputs, labels, lengths = magenta.common.get_padded_batch(
           sequence_example_file_paths, hparams.batch_size, input_size,
           shuffle=mode == 'train')
-      # And there are no past encodings.
-      past_encodings = tf.zeros([hparams.batch_size, 0, hparams.encoding_size])
-      # And at no point can we attend to the final label.
-      target_labels = labels[:, :-1]
+      # When training, we get the entire input sequence with no history.
+      for layer in range(num_layers):
+        past_targets.append(
+            tf.zeros([hparams.batch_size, 0, layer_input_sizes[layer]]))
+        past_encodings.append(
+            tf.zeros([hparams.batch_size, 0, hparams.encoding_sizes[layer]]))
 
     elif mode == 'generate':
       inputs = tf.placeholder(tf.float32, [hparams.batch_size, None,
                                            input_size])
-      # When generating, we need to attend over all past labels.
-      labels = tf.placeholder(tf.int64, [hparams.batch_size, None])
-      past_encodings = tf.placeholder(tf.float32, [hparams.batch_size, None,
-                                                   hparams.encoding_size])
-      target_labels = labels
+      # When generating, we need to attend over all past targets and encodings
+      # at each level.
+      for layer in range(num_layers):
+        past_targets.append(
+            tf.placeholder(
+                tf.float32, [hparams.batch_size, None,
+                             layer_input_sizes[layer]]))
+        past_encodings.append(
+            tf.placeholder(
+                tf.float32, [hparams.batch_size, None,
+                             hparams.encoding_sizes[layer]]))
 
-    # Run a single RNN that will be used for similarity embeddings.
-    with tf.variable_scope('sim'):
-      sim_cell = make_rnn_cell(
-          hparams.rnn_layer_sizes,
-          dropout_keep_prob=(
-              1.0 if mode == 'generate' else hparams.dropout_keep_prob),
-          attn_length=(
-              hparams.attn_length if hasattr(hparams, 'attn_length') else 0))
-      sim_initial_state = sim_cell.zero_state(hparams.batch_size, tf.float32)
-      sim_outputs, sim_final_state = tf.nn.dynamic_rnn(
-          sim_cell, inputs, sequence_length=lengths,
-          initial_state=sim_initial_state, swap_memory=True)
+    initial_state = []
+    final_state = []
+    encodings = []
+    self_similarity = []
 
-    # Encode RNN states.
-    encodings = encode_rnn_outputs(
-        sim_outputs, hparams.batch_size, hparams.rnn_layer_sizes[-1],
-        hparams.encoding_size)
-
-    # Compute similarity between current encodings and all past and current
-    # encodings except the most recent.
-    target_encodings = tf.concat([past_encodings, encodings[:, :-1, :]], axis=1)
-    self_similarity = tf.matmul(encodings, target_encodings, transpose_b=True)
-
-    # Compute and append similarity-weighted attention on past labels.
-    attention_inputs = similarity_weighted_attention(
-        target_labels, self_similarity, num_classes)
-    combined_inputs = tf.concat([inputs, attention_inputs], axis=2)
-
-    # Now run the "real" RNN.
-    with tf.variable_scope('main'):
-      cell = make_rnn_cell(
-          hparams.rnn_layer_sizes,
-          dropout_keep_prob=(
-              1.0 if mode == 'generate' else hparams.dropout_keep_prob),
-          attn_length=(
-              hparams.attn_length if hasattr(hparams, 'attn_length') else 0))
-      initial_state = cell.zero_state(hparams.batch_size, tf.float32)
-      outputs, final_state = tf.nn.dynamic_rnn(
-          cell, combined_inputs, sequence_length=lengths,
-          initial_state=initial_state, swap_memory=True)
+    for layer in range(num_layers):
+      with tf.variable_scope('similarity_layer_%d' % (layer + 1)):
+        outputs, layer_initial_state, layer_final_state, layer_encodings, layer_self_similarity = (
+            self_similarity_layer(
+                inputs, lengths, past_targets[layer], past_encodings[layer],
+                rnn_layer_sizes=hparams.rnn_layer_sizes[layer],
+                dropout_keep_prob=(
+                    1.0 if mode == 'generate' else hparams.dropout_keep_prob),
+                batch_size=hparams.batch_size,
+                encoding_size=hparams.encoding_sizes[layer]))
+        inputs = outputs
+        initial_state.append(layer_initial_state)
+        final_state.append(layer_final_state)
+        encodings.append(layer_encodings)
+        self_similarity.append(layer_self_similarity)
 
     outputs_flat = magenta.common.flatten_maybe_padded_sequences(
         outputs, lengths)
@@ -258,7 +280,10 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             'metrics/no_event_accuracy': no_event_accuracy,
         }
 
-        tf.summary.image('self-similarity', tf.expand_dims(self_similarity, -1))
+        for layer in range(num_layers):
+          tf.summary.image('self_similarity_%d' % (layer + 1),
+                           tf.expand_dims(self_similarity[layer], -1),
+                           max_outputs=1)
 
       elif mode == 'eval':
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
@@ -293,20 +318,18 @@ def build_graph(mode, config, sequence_example_file_paths=None):
       softmax = tf.reshape(softmax_flat, [hparams.batch_size, -1, num_classes])
 
       tf.add_to_collection('inputs', inputs)
-      tf.add_to_collection('labels', labels)
-      tf.add_to_collection('past_encodings', past_encodings)
-      tf.add_to_collection('encodings', encodings)
       tf.add_to_collection('temperature', temperature)
       tf.add_to_collection('softmax', softmax)
 
-      # Flatten state tuples for metagraph compatibility.
-      for state in tf_nest.flatten(sim_initial_state):
-        tf.add_to_collection('sim_initial_state', state)
-      for state in tf_nest.flatten(sim_final_state):
-        tf.add_to_collection('sim_final_state', state)
-      for state in tf_nest.flatten(initial_state):
-        tf.add_to_collection('initial_state', state)
-      for state in tf_nest.flatten(final_state):
-        tf.add_to_collection('final_state', state)
+      for layer in range(num_layers):
+        tf.add_to_collection('past_targets_%d' % layer, past_targets[layer])
+        tf.add_to_collection('past_encodings_%d' % layer, past_encodings[layer])
+        tf.add_to_collection('encodings_%d' % layer, encodings[layer])
+
+        # Flatten state tuples for metagraph compatibility.
+        for state in tf_nest.flatten(initial_state[layer]):
+          tf.add_to_collection('initial_state_%d' % layer, state)
+        for state in tf_nest.flatten(final_state[layer]):
+          tf.add_to_collection('final_state_%d' % layer, state)
 
   return graph

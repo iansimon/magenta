@@ -37,7 +37,8 @@ class StructuredMelodyRnnGraphTest(tf.test.TestCase):
             batch_size=128,
             window_size=4,
             encoding_size=32,
-            rnn_layer_sizes=[128, 128],
+            rnn_layer_sizes=[[128], [128]],
+            encoding_sizes=[64, 64],
             dropout_keep_prob=0.5,
             clip_norm=5,
             learning_rate=0.01))
