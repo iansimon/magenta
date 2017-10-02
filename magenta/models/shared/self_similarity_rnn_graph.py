@@ -133,8 +133,7 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
   embeddings = input_embeddings(inputs, input_size, embedding_size)
 
   targets = tf.concat([past_inputs, inputs], axis=1)
-  target_embeddings = input_embeddings(
-      targets[:, :-1, :], input_size, embedding_size)
+  target_embeddings = input_embeddings(targets, input_size, embedding_size)
 
   # Compute similarity between current embeddings and embeddings for all targets
   # (except the last).
@@ -142,7 +141,7 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
 
   # Compute similarity-weighted attention over all targets (except the first).
   attention_outputs = similarity_weighted_attention(
-      targets[:, 1:, :], self_similarity)
+      targets[:, 1:, :], self_similarity[:, :, :-1])
 
   return attention_outputs, self_similarity
 
@@ -297,7 +296,8 @@ def build_graph(mode, config, sequence_example_file_paths=None):
         # Make self-similarity image summaries for each layer.
         for layer in range(num_layers):
           tf.summary.image('self_similarity_%d' % (layer + 1),
-                           self_similarity[layer], max_outputs=1)
+                           tf.expand_dims(self_similarity[layer], -1),
+                           max_outputs=1)
 
       elif mode == 'eval':
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
