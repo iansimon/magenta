@@ -22,6 +22,7 @@ import magenta
 from magenta.models.melody_rnn import melody_rnn_config_flags
 from magenta.models.shared import events_rnn_graph
 from magenta.models.shared import events_rnn_train
+from magenta.models.shared import self_similarity_rnn_graph
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('run_dir', '/tmp/melody_rnn/logdir/run1',
@@ -79,8 +80,13 @@ def main(unused_argv):
   config = melody_rnn_config_flags.config_from_flags()
 
   mode = 'eval' if FLAGS.eval else 'train'
-  graph = events_rnn_graph.build_graph(
-      mode, config, sequence_example_file_paths)
+
+  if config.use_self_similarity:
+    graph = self_similarity_rnn_graph.build_graph(
+        mode, config, sequence_example_file_paths)
+  else:
+    graph = events_rnn_graph.build_graph(
+        mode, config, sequence_example_file_paths)
 
   train_dir = os.path.join(run_dir, 'train')
   if not os.path.exists(train_dir):

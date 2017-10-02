@@ -105,12 +105,17 @@ class MelodyRnnConfig(events_rnn_model.EventSequenceRnnConfig):
     max_note: The maximum midi pitch (exclusive) the encoded melodies can have.
     transpose_to_key: The key that encoded melodies will be transposed into, or
         None if it should not be transposed.
+    use_self_similarity: If True, use a graph with RNN and self-similarity
+        attention layers. Otherwise, use a standard RNN graph.
   """
 
   def __init__(self, details, encoder_decoder, hparams,
                min_note=DEFAULT_MIN_NOTE, max_note=DEFAULT_MAX_NOTE,
-               transpose_to_key=DEFAULT_TRANSPOSE_TO_KEY):
-    super(MelodyRnnConfig, self).__init__(details, encoder_decoder, hparams)
+               transpose_to_key=DEFAULT_TRANSPOSE_TO_KEY,
+               use_self_similarity=False):
+    super(MelodyRnnConfig, self).__init__(
+        details, encoder_decoder, hparams,
+        use_self_similarity=use_self_similarity)
 
     if min_note < mm.MIN_MIDI_PITCH:
       raise ValueError('min_note must be >= 0. min_note is %d.' % min_note)
@@ -175,5 +180,21 @@ default_configs = {
             dropout_keep_prob=0.5,
             attn_length=40,
             clip_norm=3,
-            learning_rate=0.001))
+            learning_rate=0.001)),
+
+    'self_similarity_rnn': MelodyRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='self_similarity_rnn',
+            description='Melody RNN with self-similarity attention.'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            magenta.music.MelodyOneHotEncoding(
+                min_note=DEFAULT_MIN_NOTE,
+                max_note=DEFAULT_MAX_NOTE)),
+        tf.contrib.training.HParams(
+            batch_size=128,
+            rnn_layer_sizes=[[128], [128]],
+            embedding_sizes=[64, 64],
+            clip_norm=3,
+            learning_rate=0.001),
+        use_self_similarity=True),
 }
