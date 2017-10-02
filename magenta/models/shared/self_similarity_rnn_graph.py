@@ -48,7 +48,7 @@ def make_rnn_cell(rnn_layer_sizes,
   return cell
 
 
-def input_embeddings(inputs, batch_size, input_size, embedding_size):
+def input_embeddings(inputs, input_size, embedding_size):
   """Computes embeddings for a batch of input sequences.
 
   These embeddings are used to compute self-similarity over the input sequences.
@@ -56,7 +56,6 @@ def input_embeddings(inputs, batch_size, input_size, embedding_size):
   Args:
     inputs: A tensor of input sequences with shape
         `[batch_size, num_steps, input_size]`.
-    batch_size: The number of sequences per batch.
     input_size: The size of each input vector.
     embedding_size: The size of the output embedding.
 
@@ -131,11 +130,11 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
     self_similarity: The self-similarity matrix used to compute attention, a
         tensor with shape `[batch_size, num_steps, num_targets]`.
   """
-  embeddings = input_embeddings(inputs, batch_size, input_size, embedding_size)
+  embeddings = input_embeddings(inputs, input_size, embedding_size)
 
   targets = tf.concat([past_inputs, inputs], axis=1)
   target_embeddings = input_embeddings(
-      targets[:, :-1, :], batch_size, input_size, embedding_size)
+      targets[:, :-1, :], input_size, embedding_size)
 
   # Compute similarity between current embeddings and embeddings for all targets
   # (except the last).
