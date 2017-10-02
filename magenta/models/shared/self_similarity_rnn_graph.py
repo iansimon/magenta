@@ -293,6 +293,12 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             'metrics/loss_per_step': loss_per_step,
             'metrics/perplexity_per_step': perplexity_per_step,
         }
+
+        # Make self-similarity image summaries for each layer.
+        for layer in range(num_layers):
+          tf.summary.image('self_similarity_%d' % (layer + 1),
+                           self_similarity[layer], max_outputs=1)
+
       elif mode == 'eval':
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
             {
