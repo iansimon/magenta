@@ -65,3 +65,26 @@ py_library(
         # tensorflow dep
     ],
 )
+
+py_library(
+    name = "self_similarity_rnn_graph",
+    srcs = ["self_similarity_rnn_graph.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//magenta",
+        # numpy dep
+        # tensorflow dep
+    ],
+)
+
+py_test(
+    name = "self_similarity_rnn_graph_test",
+    srcs = ["self_similarity_rnn_graph_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":events_rnn_model",
+        ":self_similarity_rnn_graph",
+        "//magenta",
+        # tensorflow dep
+    ],
+)
