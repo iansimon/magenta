@@ -26,14 +26,17 @@ import tensorflow as tf
 from magenta.common import beam_search
 from magenta.common import state_util
 from magenta.models.shared import events_rnn_graph
+from magenta.models.shared import self_similarity_rnn_graph
 import magenta.music as mm
 
 
 # Model state when generating event sequences, consisting of the next inputs to
-# feed the model, the current RNN state, the current control sequence (if
+# feed the model, targets over which the model can attend (for self-similarity
+# graph only), the current RNN state, the current control sequence (if
 # applicable), and state for the current control sequence (if applicable).
 ModelState = collections.namedtuple(
-    'ModelState', ['inputs', 'rnn_state', 'control_events', 'control_state'])
+    'ModelState', ['inputs', 'targets', 'rnn_state', 'control_events',
+                   'control_state'])
 
 
 class EventSequenceRnnModelException(Exception):
@@ -80,14 +83,17 @@ class EventSequenceRnnModel(mm.BaseModel):
     self._config = config
 
   def _build_graph_for_generation(self):
-    return events_rnn_graph.build_graph('generate', self._config)
+    if self._config.use_self_similarity:
+      return self_similarity_rnn_graph.build_graph('generate', self._config)
+    else:
+      return events_rnn_graph.build_graph('generate', self._config)
 
   def _batch_size(self):
     """Extracts the batch size from the graph."""
     return self._session.graph.get_collection('inputs')[0].shape[0].value
 
-  def _generate_step_for_batch(self, event_sequences, inputs, initial_state,
-                               temperature):
+  def _generate_step_for_batch(self, event_sequences, inputs, past_targets,
+                               initial_state, temperature):
     """Extends a batch of event sequences by a single step each.
 
     This method modifies the event sequences in place.
@@ -98,11 +104,16 @@ class EventSequenceRnnModel(mm.BaseModel):
           to `self._batch_size()`. These are extended by this method.
       inputs: A Python list of model inputs, with length equal to
           `self._batch_size()`.
+      past_targets: A list containing the past attention targets for each
+          sequence, used when generating with the self-similarity RNN graph. If
+          not using self-similarity, will be ignored.
       initial_state: A numpy array containing the initial RNN state, where
           `initial_state.shape[0]` is equal to `self._batch_size()`.
       temperature: The softmax temperature.
 
     Returns:
+      targets: Attention targets for each sequence, or None if self-similarity
+          is not being used.
       final_state: The final RNN state, a numpy array the same size as
           `initial_state`.
       loglik: The log-likelihood of the chosen softmax value for each event
@@ -119,14 +130,30 @@ class EventSequenceRnnModel(mm.BaseModel):
     graph_softmax = self._session.graph.get_collection('softmax')[0]
     graph_temperature = self._session.graph.get_collection('temperature')
 
+    if self._config.use_self_similarity:
+      # When using the self-similarity graph, the main difference is we need to
+      # keep track of targets for each self-similarity layer, as all past
+      # targets can be attended to at each step.
+      graph_targets = self._session.graph.get_collection('targets')
+      graph_past_targets = self._session.graph.get_collection('past_targets')
+
     feed_dict = {graph_inputs: inputs,
                  tuple(graph_initial_state): initial_state}
+    if self._config.use_self_similarity:
+      feed_dict[tuple(graph_past_targets)] = past_targets
+
     # For backwards compatibility, we only try to pass temperature if the
     # placeholder exists in the graph.
     if graph_temperature:
       feed_dict[graph_temperature[0]] = temperature
-    final_state, softmax = self._session.run(
-        [graph_final_state, graph_softmax], feed_dict)
+
+    if self._config.use_self_similarity:
+      targets, final_state, softmax = self._session.run(
+          [graph_targets, graph_final_state, graph_softmax], feed_dict)
+    else:
+      final_state, softmax = self._session.run(
+          [graph_final_state, graph_softmax], feed_dict)
+      targets = None
 
     if softmax.shape[1] > 1:
       # The inputs batch is longer than a single step, so we also want to
@@ -141,7 +168,7 @@ class EventSequenceRnnModel(mm.BaseModel):
         event_sequences, softmax)
     p = softmax[range(len(event_sequences)), -1, indices]
 
-    return final_state, loglik + np.log(p)
+    return targets, final_state, loglik + np.log(p)
 
   def _generate_step(self, event_sequences, model_states, logliks, temperature,
                      extend_control_events_callback=None,
@@ -154,8 +181,9 @@ class EventSequenceRnnModel(mm.BaseModel):
     Args:
       event_sequences: A list of event sequence objects, which are extended by
           this method.
-      model_states: A list of model states, each of which contains model inputs
-          and initial RNN states.
+      model_states: A list of model states, each of which contains model inputs,
+          initial RNN states, and self-similarity attention targets (when using
+          the self-similarity graph).
       logliks: A list containing the current log-likelihood for each event
           sequence.
       temperature: The softmax temperature.
@@ -175,7 +203,8 @@ class EventSequenceRnnModel(mm.BaseModel):
       event_sequences: A list of extended event sequences. These are modified in
           place but also returned.
       final_states: A list of resulting model states, containing model inputs
-          for the next step along with RNN states for each event sequence.
+          for the next step, RNN states for each event sequence, and self-
+          similarity attention targets (when using self-similarity).
       logliks: A list containing the updated log-likelihood for each event
           sequence.
     """
@@ -186,6 +215,7 @@ class EventSequenceRnnModel(mm.BaseModel):
 
     # Extract inputs and RNN states from the model states.
     inputs = [model_state.inputs for model_state in model_states]
+    past_targets = [model_state.targets for model_state in model_states]
     initial_states = [model_state.rnn_state for model_state in model_states]
 
     # Also extract control sequences and states.
@@ -194,6 +224,7 @@ class EventSequenceRnnModel(mm.BaseModel):
     control_states = [
         model_state.control_state for model_state in model_states]
 
+    targets = []
     final_states = []
     logliks = np.array(logliks, dtype=np.float32)
 
@@ -202,20 +233,27 @@ class EventSequenceRnnModel(mm.BaseModel):
     padded_event_sequences = event_sequences + [
         copy.deepcopy(event_sequences[-1]) for _ in range(pad_amt)]
     padded_inputs = inputs + [inputs[-1]] * pad_amt
+    padded_past_targets = past_targets + [past_targets[-1]] * pad_amt
     padded_initial_states = initial_states + [initial_states[-1]] * pad_amt
 
     for b in range(num_batches):
       i, j = b * batch_size, (b + 1) * batch_size
       pad_amt = max(0, j - num_seqs)
       # Generate a single step for one batch of event sequences.
-      batch_final_state, batch_loglik = self._generate_step_for_batch(
-          padded_event_sequences[i:j],
-          padded_inputs[i:j],
-          state_util.batch(padded_initial_states[i:j], batch_size),
-          temperature)
+      batch_targets, batch_final_state, batch_loglik = (
+          self._generate_step_for_batch(
+              padded_event_sequences[i:j],
+              padded_inputs[i:j],
+              state_util.batch(padded_past_targets[i:j], batch_size),
+              state_util.batch(padded_initial_states[i:j], batch_size),
+              temperature))
       final_states += state_util.unbatch(
           batch_final_state, batch_size)[:j - i - pad_amt]
       logliks[i:j - pad_amt] += batch_loglik[:j - i - pad_amt]
+
+      if self._config.use_self_similarity:
+        for idx, seq_targets in enumerate(state_util.unbatch(batch_targets)):
+          targets.append(past_targets[i + idx] + seq_targets)
 
     # Construct inputs for next step.
     if extend_control_events_callback is not None:
@@ -236,12 +274,12 @@ class EventSequenceRnnModel(mm.BaseModel):
       modify_events_callback(
           self._config.encoder_decoder, event_sequences, next_inputs)
 
-    model_states = [ModelState(inputs=inputs, rnn_state=final_state,
-                               control_events=control_events,
-                               control_state=control_state)
-                    for inputs, final_state, control_events, control_state
-                    in zip(next_inputs, final_states,
-                           control_sequences, control_states)]
+    model_states = [
+        ModelState(inputs=inputs, targets=targets, rnn_state=final_state,
+                   control_events=control_events, control_state=control_state)
+        for inputs, targets, final_state, control_events, control_state
+        in zip(next_inputs, past_targets, final_states, control_sequences,
+               control_states)]
 
     return event_sequences, model_states, logliks
 
@@ -337,11 +375,18 @@ class EventSequenceRnnModel(mm.BaseModel):
     graph_initial_state = self._session.graph.get_collection('initial_state')
     initial_states = state_util.unbatch(self._session.run(graph_initial_state))
 
+    if self._config.use_self_similarity:
+      # Initial collection of attention targets is empty.
+      targets = [np.zeros([0, shape[-1]])
+                 for shape in self._config.hparams.rnn_layer_sizes]
+    else:
+      targets = None
+
     # Beam search will maintain a state for each sequence consisting of the next
     # inputs to feed the model, and the current RNN state. We start out with the
     # initial full inputs batch and the zero state.
     initial_state = ModelState(
-        inputs=inputs[0], rnn_state=initial_states[0],
+        inputs=inputs[0], targets=targets, rnn_state=initial_states[0],
         control_events=control_events, control_state=control_state)
 
     events, _, loglik = beam_search(
@@ -389,6 +434,16 @@ class EventSequenceRnnModel(mm.BaseModel):
 
     feed_dict = {graph_inputs: inputs,
                  tuple(graph_initial_state): initial_state}
+
+    if self._config.use_self_similarity:
+      # The generation graph also takes past attention targets as input; we pass
+      # an empty collection as log-likelihood computation happens in a single
+      # graph execution.
+      graph_past_targets = self._session.graph.get_collection('past_targets')
+      past_targets = [np.zeros(self._batch_size(), 0, shape[-1])
+                      for shape in self._config.hparams.rnn_layer_sizes]
+      feed_dict[tuple(graph_past_targets)] = past_targets
+
     # For backwards compatibility, we only try to pass temperature if the
     # placeholder exists in the graph.
     if graph_temperature:
@@ -449,7 +504,7 @@ class EventSequenceRnnModel(mm.BaseModel):
         self._session.run(graph_initial_state)] * len(event_sequences)
     offset = 0
     for _ in range(num_full_batches):
-      # Evaluate a single step for one batch of event sequences.
+      # Evaluate one batch of event sequences.
       batch_indices = range(offset, offset + batch_size)
       batch_loglik = self._evaluate_batch_log_likelihood(
           [event_sequences[i] for i in batch_indices],
@@ -491,12 +546,16 @@ class EventSequenceRnnConfig(object):
         note to use.
     steps_per_second: The integer number of quantized time steps per second to
         use.
+    use_self_similarity: If True, use a graph with RNN and self-similarity
+        attention layers. Otherwise, use a standard RNN graph.
   """
 
   def __init__(self, details, encoder_decoder, hparams,
-               steps_per_quarter=4, steps_per_second=100):
+               steps_per_quarter=4, steps_per_second=100,
+               use_self_similarity=False):
     self.details = details
     self.encoder_decoder = encoder_decoder
     self.hparams = hparams
     self.steps_per_quarter = steps_per_quarter
     self.steps_per_second = steps_per_second
+    self.use_self_similarity = use_self_similarity
