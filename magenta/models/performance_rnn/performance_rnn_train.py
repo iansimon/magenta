@@ -22,6 +22,7 @@ import magenta
 from magenta.models.performance_rnn import performance_model
 from magenta.models.shared import events_rnn_graph
 from magenta.models.shared import events_rnn_train
+from magenta.models.shared import self_similarity_rnn_graph
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('run_dir', '/tmp/performance_rnn/logdir/run1',
@@ -85,8 +86,13 @@ def main(unused_argv):
   config.hparams.parse(FLAGS.hparams)
 
   mode = 'eval' if FLAGS.eval else 'train'
-  graph = events_rnn_graph.build_graph(
-      mode, config, sequence_example_file_paths)
+
+  if config.use_self_similarity:
+    graph = self_similarity_rnn_graph.build_graph(
+        mode, config, sequence_example_file_paths)
+  else:
+    graph = events_rnn_graph.build_graph(
+        mode, config, sequence_example_file_paths)
 
   train_dir = os.path.join(run_dir, 'train')
   tf.gfile.MakeDirs(train_dir)

@@ -175,13 +175,16 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
         seconds.
     pitch_histogram_window_size: Size of window used to compute pitch class
         histograms, in seconds. If None, don't compute pitch class histograms.
+    use_self_similarity: If True, use a graph with RNN and self-similarity
+        attention layers. Otherwise, use a standard RNN graph.
   """
 
   def __init__(self, details, encoder_decoder, hparams, num_velocity_bins=0,
                density_bin_ranges=None, density_window_size=3.0,
-               pitch_histogram_window_size=None):
+               pitch_histogram_window_size=None, use_self_similarity=False):
     super(PerformanceRnnConfig, self).__init__(
-        details, encoder_decoder, hparams)
+        details, encoder_decoder, hparams,
+        use_self_similarity=use_self_similarity)
     self.num_velocity_bins = num_velocity_bins
     self.density_bin_ranges = density_bin_ranges
     self.density_window_size = density_window_size
@@ -279,5 +282,21 @@ default_configs = {
         num_velocity_bins=32,
         density_bin_ranges=[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0],
         density_window_size=3.0,
-        pitch_histogram_window_size=5.0)
+        pitch_histogram_window_size=5.0),
+
+    'self_similarity_performance_with_dynamics': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='self_similarity_performance_with_dynamics',
+            description='Performance RNN with dynamics and self-similarity'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            performance_encoder_decoder.PerformanceOneHotEncoding(
+                num_velocity_bins=32)),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[[512], [512], [512]],
+            embedding_sizes=[256, 256, 256],
+            clip_norm=3,
+            learning_rate=0.001),
+        num_velocity_bins=32,
+        use_self_similarity=True),
 }
