@@ -224,7 +224,6 @@ class EventSequenceRnnModel(mm.BaseModel):
     control_states = [
         model_state.control_state for model_state in model_states]
 
-    targets = []
     final_states = []
     logliks = np.array(logliks, dtype=np.float32)
 
@@ -233,7 +232,8 @@ class EventSequenceRnnModel(mm.BaseModel):
     padded_event_sequences = event_sequences + [
         copy.deepcopy(event_sequences[-1]) for _ in range(pad_amt)]
     padded_inputs = inputs + [inputs[-1]] * pad_amt
-    padded_past_targets = past_targets + [past_targets[-1]] * pad_amt
+    padded_past_targets = past_targets + [
+        copy.deepcopy(past_targets[-1]) for _ in range(pad_amt)]
     padded_initial_states = initial_states + [initial_states[-1]] * pad_amt
 
     for b in range(num_batches):
@@ -252,8 +252,14 @@ class EventSequenceRnnModel(mm.BaseModel):
       logliks[i:j - pad_amt] += batch_loglik[:j - i - pad_amt]
 
       if self._config.use_self_similarity:
+        # Append the new targets for this batch to the past target sequences.
+        # TODO(iansimon): Append without copying everything; right now this is
+        # terribly inefficient.
+        num_layers = len(self._config.hparams.rnn_layer_sizes)
         for idx, seq_targets in enumerate(state_util.unbatch(batch_targets)):
-          targets.append(past_targets[i + idx] + seq_targets)
+          for layer in range(num_layers):
+            past_targets[i + idx][layer] = np.concatenate(
+                [past_targets[i + idx][layer], seq_targets[layer]], axis=0)
 
     # Construct inputs for next step.
     if extend_control_events_callback is not None:
