@@ -69,7 +69,7 @@ def input_embeddings(inputs, input_size, embedding_size):
   # each input step independently.
   embeddings = tf.contrib.layers.conv2d(
       inputs_flat, embedding_size, [1, input_size], padding='VALID',
-      activation_fn=tf.nn.relu)
+      activation_fn=None)
 
   return tf.squeeze(embeddings, axis=2)
 
@@ -128,7 +128,7 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
         past and current inputs, a tensor with shape
         `[batch_size, num_steps, input_size]`.
     self_similarity: The self-similarity matrix used to compute attention, a
-        tensor with shape `[batch_size, num_steps, num_targets]`.
+        tensor with shape `[batch_size, num_steps, num_steps]`.
   """
   embeddings = input_embeddings(inputs, input_size, embedding_size)
 
@@ -137,7 +137,9 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
 
   # Compute similarity between current embeddings and embeddings for all targets
   # (except the last).
-  self_similarity = tf.matmul(embeddings, target_embeddings, transpose_b=True)
+  self_similarity = (
+      tf.matmul(embeddings, target_embeddings, transpose_b=True) /
+      np.sqrt(embedding_size))
 
   # Compute similarity-weighted attention over all targets (except the first).
   attention_outputs = similarity_weighted_attention(
