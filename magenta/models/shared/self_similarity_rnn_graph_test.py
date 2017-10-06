@@ -34,9 +34,10 @@ class SelfSimilarityRNNGraphTest(tf.test.TestCase):
         magenta.music.OneHotEventSequenceEncoderDecoder(
             magenta.music.testing_lib.TrivialOneHotEncoding(12)),
         tf.contrib.training.HParams(
-            batch_size=128,
+            batch_size=64,
             rnn_layer_sizes=[[128], [128]],
             embedding_sizes=[32, 32],
+            num_attention_heads=4,
             clip_norm=5,
             learning_rate=0.01))
 

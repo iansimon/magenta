@@ -194,6 +194,7 @@ default_configs = {
             batch_size=128,
             rnn_layer_sizes=[[128], [128]],
             embedding_sizes=[64, 64],
+            num_attention_heads=4,
             clip_norm=3,
             learning_rate=0.001),
         use_self_similarity=True),

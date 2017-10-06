@@ -41,6 +41,7 @@ def make_rnn_cell(rnn_layer_sizes,
   cells = []
   for num_units in rnn_layer_sizes:
     cell = base_cell(num_units)
+    cell = tf.contrib.rnn.ResidualWrapper(cell)
     cells.append(cell)
 
   cell = tf.contrib.rnn.MultiRNNCell(cells)
@@ -48,7 +49,7 @@ def make_rnn_cell(rnn_layer_sizes,
   return cell
 
 
-def input_embeddings(inputs, input_size, embedding_size):
+def input_embeddings(inputs, batch_size, input_size, embedding_size, num_embeddings):
   """Computes embeddings for a batch of input sequences.
 
   These embeddings are used to compute self-similarity over the input sequences.
@@ -56,63 +57,75 @@ def input_embeddings(inputs, input_size, embedding_size):
   Args:
     inputs: A tensor of input sequences with shape
         `[batch_size, num_steps, input_size]`.
+    batch_size: The number of input sequences per batch.
     input_size: The size of each input vector.
     embedding_size: The size of the output embedding.
+    num_embeddings: The number of output embeddings.
 
   Returns:
-    A tensor with shape `[batch_size, num_steps, embedding_size]` containing the
-    input embedding at each step.
+    A tensor of shape `[batch_size, num_steps, embedding_size, num_embeddings]`
+    containing the input embeddings at each step.
   """
   inputs_flat = tf.expand_dims(inputs, -1)
 
   # This isn't really a 2D convolution, but a fully-connected layer operating on
   # each input step independently.
   embeddings = tf.contrib.layers.conv2d(
-      inputs_flat, embedding_size, [1, input_size], padding='VALID',
-      activation_fn=None)
+      inputs_flat, embedding_size * num_embeddings, [1, input_size],
+      padding='VALID', activation_fn=None)
 
-  return tf.squeeze(embeddings, axis=2)
+  return tf.reshape(
+      embeddings, [batch_size, -1, embedding_size, num_embeddings])
 
 
-def similarity_weighted_attention(targets, self_similarity):
+def similarity_weighted_attention(targets, self_similarity,
+                                  num_attention_heads):
   """Computes similarity-weighted softmax attention over target vectors.
 
-  For each step, computes an attention-weighted sum of the target vectors,
-  where attention is determined by self-similarity.
+  For each step, computes multiple attention-weighted sums of the target
+  vectors, where each attention head is determined by a separate self-similarity
+  matrix.
 
   Args:
     targets: A tensor of target vector sequences with shape
         `[batch_size, num_target_steps, target_size]`.
-    self_similarity: A tensor of input self-similarities based on embeddings,
-        with shape `[batch_size, num_input_steps, num_target_steps]`.
+    self_similarity: A tensor of input self-similarities based on multiple
+        embeddings, with shape
+        `[batch_size, num_input_steps, num_target_steps, num_attention_heads]`.
+    num_attention_heads: The number of attention heads to use.
 
   Returns:
-    A tensor with shape `[batch_size, num_input_steps, target_size]` containing
+    A tensor with shape
+    `[batch_size, num_input_steps, target_size, num_attention_heads]` containing
     the similarity-weighted attention over targets for each step.
   """
   num_input_steps = tf.shape(self_similarity)[1]
   num_target_steps = tf.shape(self_similarity)[2]
 
   steps = tf.range(num_target_steps - num_input_steps + 1, num_target_steps + 1)
-  transposed_self_similarity = tf.transpose(self_similarity, [1, 0, 2])
+  transposed_self_similarity = tf.transpose(self_similarity, [1, 0, 3, 2])
 
   # This computes a masked softmax to prevent attending to the future.
   def similarity_to_attention(enumerated_similarity):
     step, sim = enumerated_similarity
     return tf.concat(
-        [tf.nn.softmax(sim[:, :step]), tf.zeros_like(sim[:, step:])], axis=-1)
+        [tf.nn.softmax(sim[:, :, :step]), tf.zeros_like(sim[:, :, step:])],
+        axis=-1)
 
   transposed_attention = tf.map_fn(
       similarity_to_attention, (steps, transposed_self_similarity),
       dtype=tf.float32)
-  attention = tf.transpose(transposed_attention, [1, 0, 2])
+  attention = tf.transpose(transposed_attention, [1, 2, 0, 3])
 
-  return tf.matmul(attention, targets)
+  tiled_targets = tf.tile(
+      tf.expand_dims(targets, 1), [1, num_attention_heads, 1, 1])
+
+  return tf.transpose(tf.matmul(attention, tiled_targets), [0, 2, 3, 1])
 
 
 def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
-                              embedding_size):
-  """Computes self-similarity attention over inputs via embeddings.
+                              embedding_size, num_attention_heads):
+  """Computes multihead self-similarity attention over inputs via embeddings.
 
   Args:
     inputs: A tensor of input sequences with shape
@@ -121,29 +134,38 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
         `[batch_size, num_past_steps, input_size]`. Can be empty.
     batch_size: The number of sequences per batch.
     input_size: The size of each input vector.
-    embedding_size: The size of the embedding used to compute similarity.
+    embedding_size: The size of the embeddings used to compute similarity.
+    num_attention_heads: The number of attention heads to use (each with its
+        own embedding).
 
   Returns:
     attention_outputs: A softmax-weighted sum of "targets" consisting of all
         past and current inputs, a tensor with shape
-        `[batch_size, num_steps, input_size]`.
-    self_similarity: The self-similarity matrix used to compute attention, a
-        tensor with shape `[batch_size, num_steps, num_steps]`.
+        `[batch_size, num_steps, input_size, num_attention_heads]`.
+    self_similarity: The self-similarity matrices used to compute attention, a
+        tensor with shape
+        `[batch_size, num_steps, num_steps, num_attention_heads]`.
   """
-  embeddings = input_embeddings(inputs, input_size, embedding_size)
+  embeddings = input_embeddings(
+      inputs, batch_size, input_size, embedding_size, num_attention_heads)
+  transposed_embeddings = tf.transpose(embeddings, [0, 3, 1, 2])
 
   targets = tf.concat([past_inputs, inputs], axis=1)
-  target_embeddings = input_embeddings(targets, input_size, embedding_size)
+  target_embeddings = input_embeddings(
+      targets, batch_size, input_size, embedding_size, num_attention_heads)
+  transposed_target_embeddings = tf.transpose(target_embeddings, [0, 3, 1, 2])
 
   # Compute similarity between current embeddings and embeddings for all targets
   # (except the last).
-  self_similarity = (
-      tf.matmul(embeddings, target_embeddings, transpose_b=True) /
-      np.sqrt(embedding_size))
+  transposed_self_similarity = (
+      tf.matmul(
+          transposed_embeddings, transposed_target_embeddings,
+          transpose_b=True) / np.sqrt(embedding_size))
+  self_similarity = tf.transpose(transposed_self_similarity, [0, 2, 3, 1])
 
   # Compute similarity-weighted attention over all targets (except the first).
   attention_outputs = similarity_weighted_attention(
-      targets[:, 1:, :], self_similarity[:, :, :-1])
+      targets[:, 1:, :], self_similarity[:, :, :-1, :], num_attention_heads)
 
   return attention_outputs, self_similarity
 
@@ -207,11 +229,15 @@ def build_graph(mode, config, sequence_example_file_paths=None):
     final_state = []
     self_similarity = []
 
-    layer_inputs = inputs
+    outputs = inputs
 
     for layer in range(num_layers):
       with tf.variable_scope('layer_%d' % (layer + 1)):
-        # Each layer starts with an RNN.
+        # First use a linear layer to get the right dimensionality.
+        layer_inputs = tf.contrib.layers.linear(
+            outputs, hparams.rnn_layer_sizes[layer][0])
+
+        # Then each layer has an RNN.
         cell = make_rnn_cell(hparams.rnn_layer_sizes[layer])
         layer_initial_state = cell.zero_state(hparams.batch_size, tf.float32)
         rnn_outputs, layer_final_state = tf.nn.dynamic_rnn(
@@ -223,19 +249,21 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             rnn_outputs, past_targets[layer],
             batch_size=hparams.batch_size,
             input_size=hparams.rnn_layer_sizes[layer][-1],
-            embedding_size=hparams.embedding_sizes[layer])
+            embedding_size=hparams.embedding_sizes[layer],
+            num_attention_heads=hparams.num_attention_heads)
 
         # The final output is a concatenation of the RNN output and self-
         # similarity attention output.
-        outputs = tf.concat([rnn_outputs, attention_outputs], axis=2)
+        outputs = tf.reshape(
+            tf.concat(
+                [tf.expand_dims(rnn_outputs, -1), attention_outputs], axis=3),
+                [hparams.batch_size, -1, hparams.rnn_layer_sizes[layer][-1] * (
+                     hparams.num_attention_heads + 1)])
 
         targets.append(rnn_outputs)
         initial_state.append(layer_initial_state)
         final_state.append(layer_final_state)
         self_similarity.append(layer_self_similarity)
-
-        # Outputs are inputs to next layer.
-        layer_inputs = outputs
 
     outputs_flat = magenta.common.flatten_maybe_padded_sequences(
         outputs, lengths)
@@ -295,11 +323,13 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             'metrics/perplexity_per_step': perplexity_per_step,
         }
 
-        # Make self-similarity image summaries for each layer.
+        # Make self-similarity image summaries for each layer and each
+        # attention head.
         for layer in range(num_layers):
-          tf.summary.image('self_similarity_%d' % (layer + 1),
-                           tf.expand_dims(self_similarity[layer], -1),
-                           max_outputs=1)
+          for head in range(hparams.num_attention_heads):
+            tf.summary.image(
+                'self_similarity_layer_%d_head_%d' % (layer + 1, head + 1),
+                self_similarity[layer][:, :, :, head], max_outputs=1)
 
       elif mode == 'eval':
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
