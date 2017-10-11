@@ -74,40 +74,49 @@ def input_embeddings(inputs, input_size, embedding_size):
   return tf.squeeze(embeddings, axis=2)
 
 
-def similarity_weighted_attention(targets, self_similarity):
+def similarity_weighted_attention(targets, embeddings, target_embeddings):
   """Computes similarity-weighted softmax attention over target vectors.
 
   For each step, computes an attention-weighted sum of the target vectors,
-  where attention is determined by self-similarity.
+  where attention is determined by similarity between the embedding and all
+  previous target embeddings.
 
   Args:
     targets: A tensor of target vector sequences with shape
         `[batch_size, num_target_steps, target_size]`.
-    self_similarity: A tensor of input self-similarities based on embeddings,
-        with shape `[batch_size, num_input_steps, num_target_steps]`.
+    embeddings: A tensor of input embeddings with shape
+        `[batch_size, num_input_steps, embedding_size]`.
+    target_embeddings: A tensor of target embeddings with shape
+        `[batch_size, num_target_steps, embedding_size]`.
 
   Returns:
     A tensor with shape `[batch_size, num_input_steps, target_size]` containing
     the similarity-weighted attention over targets for each step.
   """
-  num_input_steps = tf.shape(self_similarity)[1]
-  num_target_steps = tf.shape(self_similarity)[2]
+  num_input_steps = tf.shape(embeddings)[1]
+  num_target_steps = tf.shape(target_embeddings)[1]
 
   steps = tf.range(num_target_steps - num_input_steps + 1, num_target_steps + 1)
-  transposed_self_similarity = tf.transpose(self_similarity, [1, 0, 2])
+  transposed_embeddings = tf.transpose(embeddings, [1, 0, 2])
 
-  # This computes a masked softmax to prevent attending to the future.
-  def similarity_to_attention(enumerated_similarity):
-    step, sim = enumerated_similarity
-    return tf.concat(
-        [tf.nn.softmax(sim[:, :step]), tf.zeros_like(sim[:, step:])], axis=-1)
+  # This uses a masked softmax to prevent attending to the future.
+  def embeddings_to_attention(enumerated_embeddings):
+    step, embedding = enumerated_embeddings
+    similarity = tf.matmul(
+        tf.expand_dims(embedding, 1), target_embeddings[:, :step, :],
+        transpose_b=True)
+    # Softmax doesn't work on empty tensors.
+    attention = tf.cond(
+        step > 0,
+        lambda: tf.nn.softmax(similarity),
+        lambda: tf.zeros_like(similarity))
+    return tf.squeeze(tf.matmul(attention, targets[:, :step, :]), axis=1)
 
   transposed_attention = tf.map_fn(
-      similarity_to_attention, (steps, transposed_self_similarity),
-      dtype=tf.float32)
-  attention = tf.transpose(transposed_attention, [1, 0, 2])
+      embeddings_to_attention, (steps, transposed_embeddings),
+      dtype=tf.float32, swap_memory=True)
 
-  return tf.matmul(attention, targets)
+  return tf.transpose(transposed_attention, [1, 0, 2])
 
 
 def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
@@ -124,28 +133,19 @@ def self_similarity_attention(inputs, past_inputs, batch_size, input_size,
     embedding_size: The size of the embedding used to compute similarity.
 
   Returns:
-    attention_outputs: A softmax-weighted sum of "targets" consisting of all
-        past and current inputs, a tensor with shape
-        `[batch_size, num_steps, input_size]`.
-    self_similarity: The self-similarity matrix used to compute attention, a
-        tensor with shape `[batch_size, num_steps, num_steps]`.
+    A softmax-weighted sum of "targets" consisting of all past and current
+    inputs, a tensor with shape `[batch_size, num_steps, input_size]`.
   """
   embeddings = input_embeddings(inputs, input_size, embedding_size)
 
   targets = tf.concat([past_inputs, inputs], axis=1)
   target_embeddings = input_embeddings(targets, input_size, embedding_size)
 
-  # Compute similarity between current embeddings and embeddings for all targets
-  # (except the last).
-  self_similarity = (
-      tf.matmul(embeddings, target_embeddings, transpose_b=True) /
-      np.sqrt(embedding_size))
-
-  # Compute similarity-weighted attention over all targets (except the first).
+  # Compute similarity-weighted attention over all available targets.
   attention_outputs = similarity_weighted_attention(
-      targets[:, 1:, :], self_similarity[:, :, :-1])
+      targets[:, 1:, :], embeddings, target_embeddings[:, :-1, :])
 
-  return attention_outputs, self_similarity
+  return attention_outputs
 
 
 def build_graph(mode, config, sequence_example_file_paths=None):
@@ -205,7 +205,6 @@ def build_graph(mode, config, sequence_example_file_paths=None):
     targets = []
     initial_state = []
     final_state = []
-    self_similarity = []
 
     layer_inputs = inputs
 
@@ -219,7 +218,7 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             initial_state=layer_initial_state, swap_memory=True)
 
         # Then the RNN output is run through a self-similarity attention layer.
-        attention_outputs, layer_self_similarity = self_similarity_attention(
+        attention_outputs = self_similarity_attention(
             rnn_outputs, past_targets[layer],
             batch_size=hparams.batch_size,
             input_size=hparams.rnn_layer_sizes[layer][-1],
@@ -232,7 +231,6 @@ def build_graph(mode, config, sequence_example_file_paths=None):
         targets.append(rnn_outputs)
         initial_state.append(layer_initial_state)
         final_state.append(layer_final_state)
-        self_similarity.append(layer_self_similarity)
 
         # Outputs are inputs to next layer.
         layer_inputs = outputs
@@ -294,12 +292,6 @@ def build_graph(mode, config, sequence_example_file_paths=None):
             'metrics/loss_per_step': loss_per_step,
             'metrics/perplexity_per_step': perplexity_per_step,
         }
-
-        # Make self-similarity image summaries for each layer.
-        for layer in range(num_layers):
-          tf.summary.image('self_similarity_%d' % (layer + 1),
-                           tf.expand_dims(self_similarity[layer], -1),
-                           max_outputs=1)
 
       elif mode == 'eval':
         vars_to_summarize, update_ops = tf.contrib.metrics.aggregate_metric_map(
