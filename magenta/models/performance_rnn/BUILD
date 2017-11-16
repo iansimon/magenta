@@ -56,6 +56,7 @@ py_library(
     srcs = ["performance_model.py"],
     srcs_version = "PY2AND3",
     visibility = [
+        "//magenta/models/shared:__pkg__",
         # internal notebook binary
         # internal models
     ],
@@ -149,19 +150,6 @@ py_test(
         ":performance_model",
         ":performance_rnn_create_dataset",
         "//magenta",
-        # tensorflow dep
-    ],
-)
-
-py_binary(
-    name = "performance_rnn_train",
-    srcs = ["performance_rnn_train.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//magenta/tools/pip:__subpackages__"],
-    deps = [
-        ":performance_model",
-        "//magenta/models/shared:events_rnn_graph",
-        "//magenta/models/shared:events_rnn_train",
         # tensorflow dep
     ],
 )

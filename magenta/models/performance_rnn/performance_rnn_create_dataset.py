@@ -41,7 +41,8 @@ tf.app.flags.DEFINE_string('output_dir', None,
                            'Directory to write training and eval TFRecord '
                            'files. The TFRecord files are populated with '
                            'SequenceExample protos.')
-tf.app.flags.DEFINE_string('config', 'performance', 'The config to use')
+tf.app.flags.DEFINE_string('config', 'performance_with_dynamics',
+                           'The config to use.')
 tf.app.flags.DEFINE_float('eval_ratio', 0.1,
                           'Fraction of input to set aside for eval set. '
                           'Partition is randomly selected.')

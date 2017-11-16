@@ -41,6 +41,7 @@ tf.app.flags.DEFINE_string('output_dir', None,
                            'Directory to write training and eval TFRecord '
                            'files. The TFRecord files are populated with '
                            'SequenceExample protos.')
+tf.app.flags.DEFINE_string('config', 'polyphony', 'The config to use.')
 tf.app.flags.DEFINE_float('eval_ratio', 0.1,
                           'Fraction of input to set aside for eval set. '
                           'Partition is randomly selected.')
@@ -123,7 +124,7 @@ def main(unused_argv):
       min_steps=80,  # 5 measures
       max_steps=512,
       eval_ratio=FLAGS.eval_ratio,
-      config=polyphony_model.default_configs['polyphony'])
+      config=polyphony_model.default_configs[FLAGS.config])
 
   input_dir = os.path.expanduser(FLAGS.input)
   output_dir = os.path.expanduser(FLAGS.output_dir)

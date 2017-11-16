@@ -50,7 +50,7 @@ tf.app.flags.DEFINE_string(
     'A short, human-readable text description of the bundle (e.g., training '
     'data, hyper parameters, etc.).')
 tf.app.flags.DEFINE_string(
-    'config', 'performance', 'Config to use.')
+    'config', 'performance_with_dynamics', 'The config to use.')
 tf.app.flags.DEFINE_string(
     'output_dir', '/tmp/performance_rnn/generated',
     'The directory where MIDI files will be saved to.')

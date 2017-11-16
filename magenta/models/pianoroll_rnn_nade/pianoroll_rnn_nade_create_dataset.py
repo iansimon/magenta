@@ -41,8 +41,7 @@ tf.app.flags.DEFINE_string('output_dir', None,
 tf.app.flags.DEFINE_float('eval_ratio', 0.1,
                           'Fraction of input to set aside for eval set. '
                           'Partition is randomly selected.')
-tf.app.flags.DEFINE_string('config', 'rnn-nade',
-                           'Which config to use.')
+tf.app.flags.DEFINE_string('config', 'rnn-nade', 'Which config to use.')
 tf.app.flags.DEFINE_string('log', 'INFO',
                            'The threshold for what messages will be logged '
                            'DEBUG, INFO, WARN, ERROR, or FATAL.')

@@ -31,41 +31,38 @@ sh_binary(
         "//magenta/interfaces/midi:midi_clock",
         "//magenta/scripts:convert_dir_to_note_sequences",
 
+        # Shared RNN Training Script
+        "//magenta/models/shared:events_rnn_train",
+
         # Drums RNN Model and Scripts
         "//magenta/models/drums_rnn",
         "//magenta/models/drums_rnn:drums_rnn_create_dataset",
         "//magenta/models/drums_rnn:drums_rnn_generate",
-        "//magenta/models/drums_rnn:drums_rnn_train",
 
         # Improv RNN Model and Scripts
         "//magenta/models/improv_rnn",
         "//magenta/models/improv_rnn:improv_rnn_create_dataset",
         "//magenta/models/improv_rnn:improv_rnn_generate",
-        "//magenta/models/improv_rnn:improv_rnn_train",
 
         # Melody RNN Model and Scripts
         "//magenta/models/melody_rnn",
         "//magenta/models/melody_rnn:melody_rnn_create_dataset",
         "//magenta/models/melody_rnn:melody_rnn_generate",
-        "//magenta/models/melody_rnn:melody_rnn_train",
 
         # Performance RNN Model and Scripts
         "//magenta/models/performance_rnn",
         "//magenta/models/performance_rnn:performance_rnn_create_dataset",
         "//magenta/models/performance_rnn:performance_rnn_generate",
-        "//magenta/models/performance_rnn:performance_rnn_train",
 
         # Pianoroll RNN-NADE Model and Scripts
         "//magenta/models/pianoroll_rnn_nade",
         "//magenta/models/pianoroll_rnn_nade:pianoroll_rnn_nade_create_dataset",
         "//magenta/models/pianoroll_rnn_nade:pianoroll_rnn_nade_generate",
-        "//magenta/models/pianoroll_rnn_nade:pianoroll_rnn_nade_train",
 
         # Polyphony RNN Model and Scripts
         "//magenta/models/polyphony_rnn",
         "//magenta/models/polyphony_rnn:polyphony_rnn_create_dataset",
         "//magenta/models/polyphony_rnn:polyphony_rnn_generate",
-        "//magenta/models/polyphony_rnn:polyphony_rnn_train",
 
         # RL Tuner Model and Scripts
         "//magenta/models/rl_tuner",

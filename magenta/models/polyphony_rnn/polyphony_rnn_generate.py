@@ -50,7 +50,7 @@ tf.app.flags.DEFINE_string(
     'A short, human-readable text description of the bundle (e.g., training '
     'data, hyper parameters, etc.).')
 tf.app.flags.DEFINE_string(
-    'config', 'polyphony', 'Config to use.')
+    'config', 'polyphony', 'The config to use.')
 tf.app.flags.DEFINE_string(
     'output_dir', '/tmp/polyphony_rnn/generated',
     'The directory where MIDI files will be saved to.')

@@ -24,6 +24,22 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 py_library(
+    name = "events_rnn_configs",
+    srcs = ["events_rnn_configs.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":events_rnn_graph",
+        "//magenta/models/drums_rnn:drums_rnn_model",
+        "//magenta/models/improv_rnn:improv_rnn_model",
+        "//magenta/models/melody_rnn:melody_rnn_model",
+        "//magenta/models/performance_rnn:performance_model",
+        "//magenta/models/pianoroll_rnn_nade:pianoroll_rnn_nade_graph",
+        "//magenta/models/pianoroll_rnn_nade:pianoroll_rnn_nade_model",
+        "//magenta/models/polyphony_rnn:polyphony_model",
+    ],
+)
+
+py_library(
     name = "events_rnn_graph",
     srcs = ["events_rnn_graph.py"],
     srcs_version = "PY2AND3",
@@ -57,11 +73,14 @@ py_library(
     ],
 )
 
-py_library(
+py_binary(
     name = "events_rnn_train",
     srcs = ["events_rnn_train.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//magenta/tools/pip:__subpackages__"],
     deps = [
+        ":events_rnn_configs",
+        "//magenta",
         # tensorflow dep
     ],
 )

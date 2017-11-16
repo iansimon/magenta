@@ -99,7 +99,9 @@ pianoroll_rnn_nade_create_dataset \
 Run the command below to start a training job using the attention configuration. `--run_dir` is the directory where checkpoints and TensorBoard data for this run will be stored. `--sequence_example_file` is the TFRecord file of SequenceExamples that will be fed to the model. `--num_training_steps` (optional) is how many update steps to take before exiting the training loop. If left unspecified, the training loop will run until terminated manually. `--hparams` (optional) can be used to specify hyperparameters other than the defaults. For this example, we specify a custom batch size of 64 instead of the default batch size of 48. Using smaller batch sizes can help reduce memory usage, which can resolve potential out-of-memory issues when training larger models. We'll also use a single-layer RNN with 128 units, instead of the default of 3 layers of 128 units each. This will make our model train faster. However, if you have enough compute power, you can try using larger layer sizes for better results.
 
 ```
-pianoroll_rnn_nade_train \
+events_rnn_train \
+--model=pianoroll_rnn_nade \
+--config=rnn-nade \
 --run_dir=/tmp/pianoroll_rnn_nade/logdir/run1 \
 --sequence_example_file=/tmp/pianoroll_rnn_nade/sequence_examples/training_pianoroll_tracks.tfrecord \
 --hparams="batch_size=48,rnn_layer_sizes=[128]" \
@@ -109,7 +111,9 @@ pianoroll_rnn_nade_train \
 Optionally run an eval job in parallel. `--run_dir`, `--hparams`, and `--num_training_steps` should all be the same values used for the training job. `--sequence_example_file` should point to the separate set of eval pianoroll tracks. Include `--eval` to make this an eval job, resulting in the model only being evaluated without any of the weights being updated.
 
 ```
-pianoroll_rnn_nade_train \
+events_rnn_train \
+--model=pianoroll_rnn_nade \
+--config=rnn-nade \
 --run_dir=/tmp/pianoroll_rnn_nade/logdir/run1 \
 --sequence_example_file=/tmp/pianoroll_rnn_nade/sequence_examples/eval_pianoroll_tracks.tfrecord \
 --hparams="batch_size=48,rnn_layer_sizes=[128]" \

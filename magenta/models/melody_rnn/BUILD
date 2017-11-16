@@ -30,24 +30,11 @@ py_library(
 )
 
 py_library(
-    name = "melody_rnn_config_flags",
-    srcs = ["melody_rnn_config_flags.py"],
-    srcs_version = "PY2AND3",
-    visibility = [
-        # internal model:melody_rnn
-    ],
-    deps = [
-        ":melody_rnn_model",
-        "//magenta",
-        # tensorflow dep
-    ],
-)
-
-py_library(
     name = "melody_rnn_model",
     srcs = ["melody_rnn_model.py"],
     srcs_version = "PY2AND3",
     visibility = [
+        "//magenta/models/shared:__pkg__",
         # internal models
         # internal notebook binary
     ],
@@ -80,7 +67,7 @@ py_binary(
         "//magenta/tools/pip:__subpackages__",
     ],
     deps = [
-        ":melody_rnn_config_flags",
+        ":melody_rnn_model",
         "//magenta",
         # tensorflow dep
     ],
@@ -99,21 +86,6 @@ py_test(
 )
 
 py_binary(
-    name = "melody_rnn_train",
-    srcs = ["melody_rnn_train.py"],
-    srcs_version = "PY2AND3",
-    visibility = [
-        "//magenta/tools/pip:__subpackages__",
-    ],
-    deps = [
-        ":melody_rnn_config_flags",
-        "//magenta/models/shared:events_rnn_graph",
-        "//magenta/models/shared:events_rnn_train",
-        # tensorflow dep
-    ],
-)
-
-py_binary(
     name = "melody_rnn_generate",
     srcs = ["melody_rnn_generate.py"],
     srcs_version = "PY2AND3",
@@ -121,7 +93,6 @@ py_binary(
         "//magenta/tools/pip:__subpackages__",
     ],
     deps = [
-        ":melody_rnn_config_flags",
         ":melody_rnn_model",
         ":melody_rnn_sequence_generator",
         "//magenta",

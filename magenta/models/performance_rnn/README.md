@@ -91,7 +91,8 @@ performance_rnn_create_dataset \
 Run the command below to start a training job. `--config` should match the configuration used when creating the dataset. `--run_dir` is the directory where checkpoints and TensorBoard data for this run will be stored. `--sequence_example_file` is the TFRecord file of SequenceExamples that will be fed to the model. `--num_training_steps` (optional) is how many update steps to take before exiting the training loop. If left unspecified, the training loop will run until terminated manually. `--hparams` (optional) can be used to specify hyperparameters other than the defaults.
 
 ```
-performance_rnn_train \
+events_rnn_train \
+--model=performance_rnn \
 --config=${CONFIG} \
 --run_dir=/tmp/performance_rnn/logdir/run1 \
 --sequence_example_file=/tmp/performance_rnn/sequence_examples/training_performances.tfrecord
@@ -100,7 +101,8 @@ performance_rnn_train \
 Optionally run an eval job in parallel. `--run_dir`, `--hparams`, and `--num_training_steps` should all be the same values used for the training job. `--sequence_example_file` should point to the separate set of eval performances. Include `--eval` to make this an eval job, resulting in the model only being evaluated without any of the weights being updated.
 
 ```
-performance_rnn_train \
+events_rnn_train \
+--model=performance_rnn \
 --config=${CONFIG} \
 --run_dir=/tmp/performance_rnn/logdir/run1 \
 --sequence_example_file=/tmp/performance_rnn/sequence_examples/eval_performances.tfrecord \

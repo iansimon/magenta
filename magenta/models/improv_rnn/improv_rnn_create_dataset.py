@@ -23,7 +23,7 @@ import os
 import tensorflow as tf
 import magenta
 
-from magenta.models.improv_rnn import improv_rnn_config_flags
+from magenta.models.improv_rnn import improv_rnn_model
 
 from magenta.pipelines import dag_pipeline
 from magenta.pipelines import lead_sheet_pipelines
@@ -41,6 +41,8 @@ tf.app.flags.DEFINE_string('output_dir', None,
                            'Directory to write training and eval TFRecord '
                            'files. The TFRecord files are populated with '
                            'SequenceExample protos.')
+tf.app.flags.DEFINE_string('config', 'chord_pitches_improv',
+                           'The config to use.')
 tf.app.flags.DEFINE_float('eval_ratio', 0.1,
                           'Fraction of input to set aside for eval set. '
                           'Partition is randomly selected.')
@@ -133,7 +135,7 @@ def get_pipeline(config, eval_ratio):
 def main(unused_argv):
   tf.logging.set_verbosity(FLAGS.log)
 
-  config = improv_rnn_config_flags.config_from_flags()
+  config = improv_rnn_model.default_configs[FLAGS.config]
   pipeline_instance = get_pipeline(
       config, FLAGS.eval_ratio)
 

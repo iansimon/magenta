@@ -53,6 +53,7 @@ py_library(
     srcs = ["polyphony_model.py"],
     srcs_version = "PY2AND3",
     visibility = [
+        "//magenta/models/shared:__pkg__",
         # internal notebook binary
     ],
     deps = [
@@ -145,15 +146,3 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "polyphony_rnn_train",
-    srcs = ["polyphony_rnn_train.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//magenta/tools/pip:__subpackages__"],
-    deps = [
-        ":polyphony_model",
-        "//magenta/models/shared:events_rnn_graph",
-        "//magenta/models/shared:events_rnn_train",
-        # tensorflow dep
-    ],
-)

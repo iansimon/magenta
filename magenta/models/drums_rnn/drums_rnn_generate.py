@@ -25,7 +25,6 @@ import time
 import tensorflow as tf
 import magenta
 
-from magenta.models.drums_rnn import drums_rnn_config_flags
 from magenta.models.drums_rnn import drums_rnn_model
 from magenta.models.drums_rnn import drums_rnn_sequence_generator
 
@@ -53,6 +52,8 @@ tf.app.flags.DEFINE_string(
     'bundle_description', None,
     'A short, human-readable text description of the bundle (e.g., training '
     'data, hyper parameters, etc.).')
+tf.app.flags.DEFINE_string(
+    'config', 'drum_kit', 'The config to use.')
 tf.app.flags.DEFINE_string(
     'output_dir', '/tmp/drums_rnn/generated',
     'The directory where MIDI files will be saved to.')
@@ -228,12 +229,9 @@ def main(unused_argv):
 
   bundle = get_bundle()
 
-  if bundle:
-    config_id = bundle.generator_details.id
-    config = drums_rnn_model.default_configs[config_id]
-    config.hparams.parse(FLAGS.hparams)
-  else:
-    config = drums_rnn_config_flags.config_from_flags()
+  config_id = bundle.generator_details.id if bundle else FLAGS.config
+  config = drums_rnn_model.default_configs[config_id]
+  config.hparams.parse(FLAGS.hparams)
   # Having too large of a batch size will slow generation down unnecessarily.
   config.hparams.batch_size = min(
       config.hparams.batch_size, FLAGS.beam_size * FLAGS.branch_factor)
