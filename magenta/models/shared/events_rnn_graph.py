@@ -29,7 +29,7 @@ from tensorflow.python.util import nest as tf_nest
 def make_rnn_cell(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
                   attn_length=0,
-                  base_cell=tf.contrib.rnn.BasicLSTMCell):
+                  base_cell=tf.contrib.rnn.LSTMBlockCell):
   """Makes a RNN cell from the given hyperparameters.
 
   Args:
