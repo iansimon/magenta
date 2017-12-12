@@ -52,6 +52,24 @@ class PipelineUnitsCommonTest(tf.test.TestCase):
     unit = note_sequence_pipelines.Splitter(1.0)
     self._unit_transform_test(unit, note_sequence, expected_sequences)
 
+  def testBarSplitter(self):
+    note_sequence = common_testing_lib.parse_test_proto(
+        music_pb2.NoteSequence,
+        """
+        time_signatures: {
+          numerator: 2
+          denominator: 4}
+        tempos: {
+          qpm: 120}""")
+    testing_lib.add_track_to_sequence(
+        note_sequence, 0,
+        [(12, 100, 0.01, 10.0), (11, 55, 0.22, 0.50), (40, 45, 2.50, 3.50),
+         (55, 120, 4.0, 4.01), (52, 99, 4.75, 5.0)])
+    expected_sequences = sequences_lib.split_note_sequence(note_sequence, 1.0)
+
+    unit = note_sequence_pipelines.BarSplitter(1)
+    self._unit_transform_test(unit, note_sequence, expected_sequences)
+
   def testTimeChangeSplitter(self):
     note_sequence = common_testing_lib.parse_test_proto(
         music_pb2.NoteSequence,
@@ -185,6 +203,37 @@ class PipelineUnitsCommonTest(tf.test.TestCase):
     self.assertEqual(9, transposed[0].notes[0].pitch)
     self.assertEqual(11, transposed[0].notes[1].pitch)
     self.assertEqual(12, transposed[0].notes[2].pitch)
+
+  def testTranspositionPipelineTransposeChords(self):
+    note_sequence = common_testing_lib.parse_test_proto(
+        music_pb2.NoteSequence,
+        """
+        time_signatures: {
+          numerator: 4
+          denominator: 4}
+        tempos: {
+          qpm: 60}""")
+    tp = note_sequence_pipelines.TranspositionPipeline(
+        [-1, 0, 2], transpose_chords=True)
+    testing_lib.add_track_to_sequence(
+        note_sequence, 0,
+        [(12, 100, 1.0, 4.0)])
+    testing_lib.add_chords_to_sequence(
+        note_sequence, [('Cm7', 0.0)])
+    transposed = tp.transform(note_sequence)
+    self.assertEqual(3, len(transposed))
+    self.assertEqual(1, len(transposed[0].notes))
+    self.assertEqual(1, len(transposed[1].notes))
+    self.assertEqual(1, len(transposed[2].notes))
+    self.assertEqual(1, len(transposed[0].text_annotations))
+    self.assertEqual(1, len(transposed[1].text_annotations))
+    self.assertEqual(1, len(transposed[2].text_annotations))
+    self.assertEqual(11, transposed[0].notes[0].pitch)
+    self.assertEqual(12, transposed[1].notes[0].pitch)
+    self.assertEqual(14, transposed[2].notes[0].pitch)
+    self.assertEqual('Bm7', transposed[0].text_annotations[0].text)
+    self.assertEqual('Cm7', transposed[1].text_annotations[0].text)
+    self.assertEqual('Dm7', transposed[2].text_annotations[0].text)
 
 
 if __name__ == '__main__':

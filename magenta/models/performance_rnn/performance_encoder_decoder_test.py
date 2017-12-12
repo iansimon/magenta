@@ -99,5 +99,38 @@ class NoteDensityOneHotEncodingTest(tf.test.TestCase):
     self.assertEqual(5.0, self.enc.decode_event(2))
 
 
+class MeterEncoderTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.enc = performance_encoder_decoder.MeterEncoder(
+        quarters_per_bar=4, divisions_per_quarter=24)
+
+  def testInputSize(self):
+    self.assertEqual(28, self.enc.input_size)
+
+  def testEventsToInput(self):
+    events = [(1, 1), (1, 13), (4, 24), (1, 8)]
+    self.assertEqual(
+        [1.0, 0.0, 0.0, 0.0,
+         1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        self.enc.events_to_input(events, 0))
+    self.assertEqual(
+        [1.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+         1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        self.enc.events_to_input(events, 1))
+    self.assertEqual(
+        [0.0, 0.0, 0.0, 1.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        self.enc.events_to_input(events, 2))
+    self.assertEqual(
+        [1.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
+         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        self.enc.events_to_input(events, 3))
+
+
 if __name__ == '__main__':
   tf.test.main()

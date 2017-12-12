@@ -147,3 +147,48 @@ class PitchHistogramEncoder(encoder_decoder.EventSequenceEncoderDecoder):
 
   def class_index_to_event(self, class_index, events):
     raise NotImplementedError
+
+
+class MeterEncoder(encoder_decoder.EventSequenceEncoderDecoder):
+  """An encoder for meter sequences.
+
+  A meter sequence consists of (quarter, division) tuples; each tuple is encoded
+  as the concatenation of one-hot-encoded quarter and one-hot-encoded division.
+  """
+
+  def __init__(self, quarters_per_bar, divisions_per_quarter):
+    """Initialize a MeterEncoder.
+
+    Args:
+      quarters_per_bar: The number of quarter notes per bar.
+      divisions_per_quarter: The number of divisions per quarter note.
+    """
+    self._quarters_per_bar = quarters_per_bar
+    self._divisions_per_quarter = divisions_per_quarter
+
+  @property
+  def input_size(self):
+    return self._quarters_per_bar + self._divisions_per_quarter
+
+  @property
+  def num_classes(self):
+    raise NotImplementedError
+
+  @property
+  def default_event_label(self):
+    raise NotImplementedError
+
+  def events_to_input(self, events, position):
+    input_ = [0.0] * self.input_size
+    quarter, division = events[position]
+    input_[quarter - 1] = 1.0
+    input_[self._quarters_per_bar + division - 1] = 1.0
+    return input_
+
+  def events_to_label(self, events, position):
+    raise NotImplementedError
+
+  def class_index_to_event(self, class_index, events):
+    raise NotImplementedError
+
+

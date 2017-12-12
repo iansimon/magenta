@@ -183,6 +183,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":pipeline",
+        "//magenta/music:chord_symbols_lib",
         "//magenta/music:sequences_lib",
         "//magenta/protobuf:music_py_pb2",
         # tensorflow dep

@@ -18,6 +18,7 @@ import copy
 # internal imports
 import tensorflow as tf
 
+from magenta.music import chord_symbols_lib
 from magenta.music import constants
 from magenta.music import sequences_lib
 from magenta.pipelines import pipeline
@@ -60,6 +61,49 @@ class Splitter(NoteSequencePipeline):
   def transform(self, note_sequence):
     return sequences_lib.split_note_sequence(
         note_sequence, self._hop_size_seconds)
+
+
+class BarSplitter(NoteSequencePipeline):
+  """A Pipeline that splits NoteSequences at intervals specified in bars."""
+
+  def __init__(self, hop_size_bars, name=None):
+    """Creates a BarSplitter pipeline.
+
+    Args:
+      hop_size_bars: Hop size in bars that will be used to split a NoteSequence
+          at regular intervals.
+      name: Pipeline name.
+    """
+    super(BarSplitter, self).__init__(name=name)
+    self._hop_size_bars = hop_size_bars
+
+  def transform(self, note_sequence):
+    if not note_sequence.tempos:
+      self._set_stats([statistics.Counter(
+          'sequences_discarded_no_tempo', 1)])
+      return []
+    if len(note_sequence.tempos) > 1:
+      self._set_stats([statistics.Counter(
+          'sequences_discarded_multiple_tempos', 1)])
+      return []
+    if not note_sequence.time_signatures:
+      self._set_stats([statistics.Counter(
+          'sequences_discarded_no_time_signature', 1)])
+      return []
+    if len(note_sequence.time_signatures) > 1:
+      self._set_stats([statistics.Counter(
+          'sequences_discarded_multiple_time_signatures', 1)])
+      return []
+
+    # Determine the number of seconds per bar and use that to split.
+    qpm = note_sequence.tempos[0].qpm
+    quarters_per_beat = 4.0 / note_sequence.time_signatures[0].denominator
+    quarters_per_bar = (quarters_per_beat *
+                        note_sequence.time_signatures[0].numerator)
+    seconds_per_bar = 60.0 * quarters_per_bar / qpm
+    hop_size_seconds = self._hop_size_bars * seconds_per_bar
+
+    return sequences_lib.split_note_sequence(note_sequence, hop_size_seconds)
 
 
 class TimeChangeSplitter(NoteSequencePipeline):
@@ -151,7 +195,8 @@ class TranspositionPipeline(NoteSequencePipeline):
   """Creates transposed versions of the input NoteSequence."""
 
   def __init__(self, transposition_range, min_pitch=constants.MIN_MIDI_PITCH,
-               max_pitch=constants.MAX_MIDI_PITCH, name=None):
+               max_pitch=constants.MAX_MIDI_PITCH, transpose_chords=False,
+               name=None):
     """Creates a TranspositionPipeline.
 
     Args:
@@ -160,25 +205,26 @@ class TranspositionPipeline(NoteSequencePipeline):
           invalid.
       max_pitch: Integer pitch value above which notes will be considered
           invalid.
+      transpose_chords: If True, also transpose chord symbols. If False, ignore
+          chord symbols.
       name: Pipeline name.
     """
     super(TranspositionPipeline, self).__init__(name=name)
     self._transposition_range = transposition_range
     self._min_pitch = min_pitch
     self._max_pitch = max_pitch
+    self._transpose_chords = transpose_chords
 
   def transform(self, sequence):
     stats = dict([(state_name, statistics.Counter(state_name)) for state_name in
                   ['skipped_due_to_range_exceeded',
+                   'skipped_due_to_chord_symbol_exception',
                    'transpositions_generated']])
 
     if sequence.key_signatures:
       tf.logging.warn('Key signatures ignored by TranspositionPipeline.')
     if any(note.pitch_name for note in sequence.notes):
       tf.logging.warn('Pitch names ignored by TranspositionPipeline.')
-    if any(ta.annotation_type == CHORD_SYMBOL
-           for ta in sequence.text_annotations):
-      tf.logging.warn('Chord symbols ignored by TranspositionPipeline.')
 
     transposed = []
     for amount in self._transposition_range:
@@ -201,4 +247,12 @@ class TranspositionPipeline(NoteSequencePipeline):
         if note.pitch < self._min_pitch or note.pitch > self._max_pitch:
           stats['skipped_due_to_range_exceeded'].increment()
           return None
+    if self._transpose_chords:
+      for ta in ts.text_annotations:
+        if ta.annotation_type == CHORD_SYMBOL:
+          try:
+            ta.text = chord_symbols_lib.transpose_chord_symbol(ta.text, amount)
+          except chord_symbols_lib.ChordSymbolException:
+            stats['skipped_due_to_chord_symbol_exception'].increment()
+            return None
     return ts

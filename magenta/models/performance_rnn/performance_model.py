@@ -193,11 +193,18 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
         histograms, in seconds. If None, don't compute pitch class histograms.
     optional_conditioning: If True, conditioning can be disabled by setting a
         flag as part of the conditioning input.
+    chord_conditioning: If True, condition on chords.
+    quarters_per_bar: When conditioning on meter, number of quarter notes per
+        bar.
+    divisions_per_quarter: When conditioning on meter, number of divisions per
+        quarter note.
   """
 
   def __init__(self, details, encoder_decoder, hparams, num_velocity_bins=0,
                density_bin_ranges=None, density_window_size=3.0,
-               pitch_histogram_window_size=None, optional_conditioning=False):
+               pitch_histogram_window_size=None, optional_conditioning=False,
+               chord_conditioning=False, quarters_per_bar=None,
+               divisions_per_quarter=None):
     super(PerformanceRnnConfig, self).__init__(
         details, encoder_decoder, hparams)
     self.num_velocity_bins = num_velocity_bins
@@ -205,6 +212,9 @@ class PerformanceRnnConfig(events_rnn_model.EventSequenceRnnConfig):
     self.density_window_size = density_window_size
     self.pitch_histogram_window_size = pitch_histogram_window_size
     self.optional_conditioning = optional_conditioning
+    self.chord_conditioning = chord_conditioning
+    self.quarters_per_bar = quarters_per_bar
+    self.divisions_per_quarter = divisions_per_quarter
 
 
 default_configs = {
@@ -328,5 +338,29 @@ default_configs = {
         density_bin_ranges=[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0],
         density_window_size=3.0,
         pitch_histogram_window_size=5.0,
-        optional_conditioning=True)
+        optional_conditioning=True),
+
+    'chord_conditioned_performance_with_dynamics': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='chord_conditioned_performance_with_dynamics',
+            description='Chord-conditioned Performance RNN'),
+        magenta.music.ConditionalEventSequenceEncoderDecoder(
+            magenta.music.MultipleEventSequenceEncoder([
+                magenta.music.OneHotEventSequenceEncoderDecoder(
+                    magenta.music.TriadChordOneHotEncoding()),
+                performance_encoder_decoder.MeterEncoder(
+                    quarters_per_bar=4, divisions_per_quarter=24)]),
+            magenta.music.OneHotEventSequenceEncoderDecoder(
+                performance_encoder_decoder.PerformanceOneHotEncoding(
+                    num_velocity_bins=32))),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[256, 256, 256],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001),
+        num_velocity_bins=32,
+        chord_conditioning=True,
+        quarters_per_bar=4,
+        divisions_per_quarter=24)
 }

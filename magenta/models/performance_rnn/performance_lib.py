@@ -22,6 +22,7 @@ import math
 # internal imports
 import tensorflow as tf
 
+from magenta.music import chords_lib
 from magenta.music import constants
 from magenta.music import events_lib
 from magenta.music import sequences_lib
@@ -446,6 +447,20 @@ class Performance(events_lib.EventSequence):
     return sequence
 
 
+class PerformanceWithChords(object):
+  """A Performance with associated ChordProgression.
+
+  Attributes:
+    performance: A Performance object, the polyphonic performance.
+    chords: A ChordProgression object, the associated chord progression.
+  """
+
+  def __init__(self, performance, chords):
+    """Construct a PerformanceWithChords object."""
+    self.performance = performance
+    self.chords = chords
+
+
 def performance_note_density_sequence(performance, window_size_seconds):
   """Computes note density at every event in a performance.
 
@@ -582,6 +597,88 @@ def performance_pitch_histogram_sequence(performance, window_size_seconds,
   return histogram_sequence
 
 
+def performance_chord_sequence(performance, chord_progression, qpm):
+  """Outputs the chord in a chord progression for each performance step.
+
+  Args:
+    performance: The Performance for which to produce event-aligned chords.
+    chord_progression: The ChordProgression used to look up the chord for each
+        event in `performance`.
+    qpm: The tempo of the ChordProgression in quarter notes per minute.
+
+  Returns:
+    A list of chords the same length (in events) as `performance`, where the
+    chord corresponding to each Performance event is the chord from
+    `chord_progression` at the time of the event.
+  """
+  chord_steps_per_performance_step = (
+      qpm * chord_progression.steps_per_quarter /
+      (60.0 * performance.steps_per_second))
+
+  chord_sequence = []
+
+  performance_step = 0
+  chord = chord_progression[0]
+
+  for event in performance:
+    chord_sequence.append(chord)
+    if event.event_type == PerformanceEvent.TIME_SHIFT:
+      performance_step += event.event_value
+      chord_progression_step = int(round(
+          performance_step * chord_steps_per_performance_step))
+      if chord_progression_step >= len(chord_progression):
+        chord = constants.NO_CHORD
+      else:
+        chord = chord_progression[chord_progression_step]
+
+  return chord_sequence
+
+
+def performance_meter_sequence(
+    performance, qpm, quarters_per_bar, divisions_per_quarter):
+  """Outputs the metric position for each performance step.
+
+  This will output a sequence of tuples the same length as `performance` (one
+  tuple per Performance event), where the first element of the tuple is the
+  quarter note position in the measure (between 1 and the number of quarter
+  notes per measure) and the second element of the tuple is the "division"
+  (between 1 and `divisions_per_quarter`).
+
+  Args:
+    performance: The Performance for which to produce corresponding meter
+        events.
+    qpm: The tempo in quarter notes per minute to use.
+    quarters_per_bar: The number of quarter notes per bar.
+    divisions_per_quarter: The number of metric subdivisions per quarter note to
+        use. Typically, this would be a number like 24 which can accommodate
+        e.g. 32nd notes and triplets.
+
+  Returns:
+    A list of meter tuples the same length (in events) as `performance`.
+  """
+  bars_per_second = qpm / (60.0 * quarters_per_bar)
+  bars_per_step = bars_per_second / performance.steps_per_second
+
+  meter_sequence = []
+
+  step = 0
+  meter_state = (1, 1)
+
+  for event in performance:
+    meter_sequence.append(meter_state)
+    if event.event_type == PerformanceEvent.TIME_SHIFT:
+      step += event.event_value
+      bar_float = step * bars_per_step
+      bar_offset = bar_float - math.floor(bar_float)
+      quarter_float = bar_offset * quarters_per_bar
+      quarter = int(math.floor(quarter_float))
+      quarter_offset = quarter_float - quarter
+      division = int(math.floor(quarter_offset * divisions_per_quarter))
+      meter_state = (quarter + 1, division + 1)
+
+  return meter_sequence
+
+
 def extract_performances(
     quantized_sequence, start_step=0, min_events_discard=None,
     max_events_truncate=None, num_velocity_bins=0):
@@ -644,3 +741,54 @@ def extract_performances(
         performance.num_steps // steps_per_second)
 
   return performances, stats.values()
+
+
+def extract_performances_with_chords(
+    sequence, performance_steps_per_second, chord_steps_per_quarter,
+    start_step=0, min_events_discard=None,
+    max_events_truncate=None, num_velocity_bins=0):
+  """Extracts a performance with chords from the given NoteSequence.
+
+  Currently, this extracts only one performance from a given track.
+
+  Args:
+    sequence: An unquantized NoteSequence.
+    performance_steps_per_second: Number of steps per second to use when
+        quantizing the performance.
+    chord_steps_per_quarter: Number of steps per quarter to use when quantizing
+        the chord progression.
+    start_step: Start extracting a sequence at this time step.
+    min_events_discard: Minimum length of tracks in events. Shorter tracks are
+        discarded.
+    max_events_truncate: Maximum length of tracks in events. Longer tracks are
+        truncated.
+    num_velocity_bins: Number of velocity bins to use. If 0, velocity events
+        will not be included at all.
+
+  Returns:
+    performances: A python list of Performance instances.
+    stats: A dictionary mapping string names to `statistics.Statistic` objects.
+  """
+  absolute_quantized_sequence = sequences_lib.quantize_note_sequence_absolute(
+      sequence, performance_steps_per_second)
+  relative_quantized_sequence = sequences_lib.quantize_note_sequence(
+      sequence, chord_steps_per_quarter)
+
+  if (sequence.tempos and
+      sequence.tempos[0].qpm != constants.DEFAULT_QUARTERS_PER_MINUTE):
+    return [], [statistics.Counter('performance_rejected_non_default_tempo', 1)]
+
+  performances, perf_stats = extract_performances(
+      absolute_quantized_sequence,
+      start_step=start_step,
+      min_events_discard=min_events_discard,
+      max_events_truncate=max_events_truncate,
+      num_velocity_bins=num_velocity_bins)
+  chord_progressions, chord_stats = chords_lib.extract_chords(
+      relative_quantized_sequence)
+
+  performances_with_chords = [
+      PerformanceWithChords(performance, chords)
+      for performance, chords in zip(performances, chord_progressions)]
+
+  return performances_with_chords, perf_stats + chord_stats

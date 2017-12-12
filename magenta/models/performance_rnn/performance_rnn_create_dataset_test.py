@@ -55,5 +55,45 @@ class PerformancePipelineTest(tf.test.TestCase):
     self.assertTrue(len(result['training_performances']))
 
 
+class ChordConditionedPerformancePipelineTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.config = performance_model.PerformanceRnnConfig(
+        None,
+        magenta.music.ConditionalEventSequenceEncoderDecoder(
+            magenta.music.MultipleEventSequenceEncoder([
+                magenta.music.OneHotEventSequenceEncoderDecoder(
+                    magenta.music.TriadChordOneHotEncoding()),
+                performance_encoder_decoder.MeterEncoder(
+                    quarters_per_bar=4, divisions_per_quarter=24)]),
+            magenta.music.OneHotEventSequenceEncoderDecoder(
+                performance_encoder_decoder.PerformanceOneHotEncoding())),
+        tf.contrib.training.HParams(),
+        chord_conditioning=True,
+        quarters_per_bar=4,
+        divisions_per_quarter=24)
+
+  def testPerformanceRnnPipeline(self):
+    note_sequence = music_pb2.NoteSequence()
+    magenta.music.testing_lib.add_track_to_sequence(
+        note_sequence, 0,
+        [(36, 100, 0.00, 2.0), (40, 55, 2.1, 5.0), (44, 80, 3.6, 5.0),
+         (41, 45, 5.1, 8.0), (64, 100, 6.6, 10.0), (55, 120, 8.1, 11.0),
+         (39, 110, 9.6, 9.7), (53, 99, 11.1, 14.1), (51, 40, 12.6, 13.0),
+         (55, 100, 14.1, 15.0), (54, 90, 15.6, 17.0), (60, 100, 17.1, 18.0)])
+    magenta.music.testing_lib.add_chords_to_sequence(
+        note_sequence,
+        [('Cmaj7', 0.5), ('Am9', 2.0), ('G7', 8.0), ('Fm6', 12.0)])
+
+    pipeline_inst = (
+        performance_rnn_create_dataset.get_chord_conditioned_pipeline(
+            min_events=32,
+            max_events=512,
+            eval_ratio=0,
+            config=self.config))
+    result = pipeline_inst.transform(note_sequence)
+    self.assertTrue(len(result['training_performances']))
+
+
 if __name__ == '__main__':
   tf.test.main()

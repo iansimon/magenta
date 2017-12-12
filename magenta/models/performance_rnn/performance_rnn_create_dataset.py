@@ -19,11 +19,15 @@ models. It will apply data augmentation, stretching and transposing each
 NoteSequence within a limited range.
 """
 
+from __future__ import division
+
+import math
 import os
 
 # internal imports
 
 import tensorflow as tf
+import magenta
 
 from magenta.models.performance_rnn import performance_lib
 from magenta.models.performance_rnn import performance_model
@@ -32,6 +36,8 @@ from magenta.pipelines import dag_pipeline
 from magenta.pipelines import note_sequence_pipelines
 from magenta.pipelines import pipeline
 from magenta.pipelines import pipelines_common
+from magenta.pipelines import statistics
+
 from magenta.protobuf import music_pb2
 
 FLAGS = tf.app.flags.FLAGS
@@ -101,6 +107,67 @@ class EncoderPipeline(pipeline.Pipeline):
     return encoded
 
 
+class ChordConditionedEncoderPipeline(pipeline.Pipeline):
+  """A Pipeline that converts performances to a model specific encoding.
+
+  Used for `chord_conditioned_performance_with_dynamics` config.
+  """
+
+  def __init__(self, config, name):
+    """Constructs a ChordConditionedEncoderPipeline.
+
+    Args:
+      config: A PerformanceRnnConfig that specifies the encoder/decoder and
+          chord/meter conditioning behavior.
+      name: A unique pipeline name.
+    """
+    super(ChordConditionedEncoderPipeline, self).__init__(
+        input_type=performance_lib.PerformanceWithChords,
+        output_type=tf.train.SequenceExample,
+        name=name)
+    self._encoder_decoder = config.encoder_decoder
+    self._quarters_per_bar = config.quarters_per_bar
+    self._divisions_per_quarter = config.divisions_per_quarter
+
+  def transform(self, performance_with_chords):
+    quarters_per_bar = int(math.ceil(
+        performance_with_chords.chords.steps_per_bar /
+        performance_with_chords.chords.steps_per_quarter))
+    if quarters_per_bar != self._quarters_per_bar:
+      tf.logging.warning(
+          'Skipped performance: expected %d quarters per bar but saw %d' % (
+              self._quarters_per_bar, quarters_per_bar))
+      self._set_stats([statistics.Counter('quarters_per_bar_mismatch', 1)])
+      return []
+
+    chord_sequence = performance_lib.performance_chord_sequence(
+        performance_with_chords.performance,
+        performance_with_chords.chords,
+        qpm=magenta.music.DEFAULT_QUARTERS_PER_MINUTE)
+    meter_sequence = performance_lib.performance_meter_sequence(
+        performance_with_chords.performance,
+        qpm=magenta.music.DEFAULT_QUARTERS_PER_MINUTE,
+        quarters_per_bar=self._quarters_per_bar,
+        divisions_per_quarter=self._divisions_per_quarter)
+
+    try:
+      encoded = [self._encoder_decoder.encode(
+          zip(chord_sequence, meter_sequence),
+          performance_with_chords.performance)]
+      stats = []
+    except magenta.music.ChordEncodingException as e:
+      tf.logging.warning('Skipped performance: %s', e)
+      encoded = []
+      stats = [statistics.Counter('chord_encoding_exception', 1)]
+    except magenta.music.ChordSymbolException as e:
+      tf.logging.warning('Skipped performance: %s', e)
+      encoded = []
+      stats = [statistics.Counter('chord_symbol_exception', 1)]
+
+    self._set_stats(stats)
+    return encoded
+
+
 class PerformanceExtractor(pipeline.Pipeline):
   """Extracts polyphonic tracks from a quantized NoteSequence."""
 
@@ -123,6 +190,33 @@ class PerformanceExtractor(pipeline.Pipeline):
     return performances
 
 
+class PerformanceWithChordsExtractor(pipeline.Pipeline):
+  """Extracts polyphonic tracks with chords from a quantized NoteSequence."""
+
+  def __init__(self, performance_steps_per_second, chord_steps_per_quarter,
+               min_events, max_events, num_velocity_bins, name=None):
+    super(PerformanceWithChordsExtractor, self).__init__(
+        input_type=music_pb2.NoteSequence,
+        output_type=performance_lib.PerformanceWithChords,
+        name=name)
+    self._performance_steps_per_second = performance_steps_per_second
+    self._chord_steps_per_quarter = chord_steps_per_quarter
+    self._min_events = min_events
+    self._max_events = max_events
+    self._num_velocity_bins = num_velocity_bins
+
+  def transform(self, quantized_sequence):
+    performances, stats = performance_lib.extract_performances_with_chords(
+        quantized_sequence,
+        performance_steps_per_second=self._performance_steps_per_second,
+        chord_steps_per_quarter=self._chord_steps_per_quarter,
+        min_events_discard=self._min_events,
+        max_events_truncate=self._max_events,
+        num_velocity_bins=self._num_velocity_bins)
+    self._set_stats(stats)
+    return performances
+
+
 def get_pipeline(config, min_events, max_events, eval_ratio):
   """Returns the Pipeline instance which creates the RNN dataset.
 
@@ -134,7 +228,14 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
 
   Returns:
     A pipeline.Pipeline instance.
+
+  Raises:
+    ValueError: If `chord_conditioning` is set to True.
   """
+  if config.chord_conditioning:
+    raise ValueError(
+        'chord conditioning on in config for non-chord-conditioned pipeline')
+
   # Stretch by -5%, -2.5%, 0%, 2.5%, and 5%.
   stretch_factors = [0.95, 0.975, 1.0, 1.025, 1.05]
 
@@ -178,14 +279,74 @@ def get_pipeline(config, min_events, max_events, eval_ratio):
   return dag_pipeline.DAGPipeline(dag)
 
 
+def get_chord_conditioned_pipeline(config, min_events, max_events, eval_ratio):
+  """Returns the Pipeline instance which creates the RNN dataset.
+
+  Used for `chord_conditioned_performance_with_dynamics` config.
+
+  Args:
+    config: A PerformanceRnnConfig.
+    min_events: Minimum number of events for an extracted sequence.
+    max_events: Maximum number of events for an extracted sequence.
+    eval_ratio: Fraction of input to set aside for evaluation set.
+
+  Returns:
+    A pipeline.Pipeline instance.
+
+  Raises:
+    ValueError: If `chord_conditioning` is set to False.
+  """
+  if not config.chord_conditioning:
+    raise ValueError(
+        'chord conditioning off in config for chord-conditioned pipeline')
+
+  # Transpose no more than a major third.
+  transposition_range = range(-3, 4)
+
+  partitioner = pipelines_common.RandomPartition(
+      music_pb2.NoteSequence,
+      ['eval_performances', 'training_performances'],
+      [eval_ratio])
+  dag = {partitioner: dag_pipeline.DagInput(music_pb2.NoteSequence)}
+
+  for mode in ['eval', 'training']:
+    sustain_pipeline = note_sequence_pipelines.SustainPipeline(
+        name='SustainPipeline_' + mode)
+    transposition_pipeline = note_sequence_pipelines.TranspositionPipeline(
+        transposition_range if mode == 'training' else [0],
+        transpose_chords=True, name='TranspositionPipeline_' + mode)
+    perf_extractor = PerformanceWithChordsExtractor(
+        performance_steps_per_second=config.steps_per_second,
+        chord_steps_per_quarter=config.steps_per_quarter,
+        min_events=min_events, max_events=max_events,
+        num_velocity_bins=config.num_velocity_bins,
+        name='PerformanceWithChordsExtractor_' + mode)
+    encoder_pipeline = ChordConditionedEncoderPipeline(
+        config, name='ChordConditionedEncoderPipeline_' + mode)
+
+    dag[sustain_pipeline] = partitioner[mode + '_performances']
+    dag[transposition_pipeline] = sustain_pipeline
+    dag[perf_extractor] = transposition_pipeline
+    dag[encoder_pipeline] = perf_extractor
+    dag[dag_pipeline.DagOutput(mode + '_performances')] = encoder_pipeline
+
+  return dag_pipeline.DAGPipeline(dag)
+
+
 def main(unused_argv):
   tf.logging.set_verbosity(FLAGS.log)
 
-  pipeline_instance = get_pipeline(
+  config = performance_model.default_configs[FLAGS.config]
+  if config.chord_conditioning:
+    get_pipeline_fn = get_chord_conditioned_pipeline
+  else:
+    get_pipeline_fn = get_pipeline
+
+  pipeline_instance = get_pipeline_fn(
       min_events=32,
       max_events=512,
       eval_ratio=FLAGS.eval_ratio,
-      config=performance_model.default_configs[FLAGS.config])
+      config=config)
 
   input_dir = os.path.expanduser(FLAGS.input)
   output_dir = os.path.expanduser(FLAGS.output_dir)
