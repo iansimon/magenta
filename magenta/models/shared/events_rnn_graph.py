@@ -29,6 +29,7 @@ from tensorflow.python.util import nest as tf_nest
 def make_rnn_cell(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
                   attn_length=0,
+                  use_residual_connections=False,
                   base_cell=tf.contrib.rnn.BasicLSTMCell):
   """Makes a RNN cell from the given hyperparameters.
 
@@ -38,6 +39,8 @@ def make_rnn_cell(rnn_layer_sizes,
     dropout_keep_prob: The float probability to keep the output of any given
         sub-cell.
     attn_length: The size of the attention vector.
+    use_residual_connections: If True, use a residual architecture for each
+        layer.
     base_cell: The base tf.contrib.rnn.RNNCell to use for sub-cells.
 
   Returns:
@@ -52,6 +55,8 @@ def make_rnn_cell(rnn_layer_sizes,
           cell, attn_length, state_is_tuple=True)
     cell = tf.contrib.rnn.DropoutWrapper(
         cell, output_keep_prob=dropout_keep_prob)
+    if use_residual_connections:
+      cell = tf.contrib.rnn.ResidualWrapper(cell)
     cells.append(cell)
 
   cell = tf.contrib.rnn.MultiRNNCell(cells)
@@ -103,17 +108,34 @@ def get_build_graph_fn(mode, config, sequence_example_file_paths=None):
       inputs = tf.placeholder(tf.float32, [hparams.batch_size, None,
                                            input_size])
 
+    use_residual_connections = (
+        hasattr(hparams, 'use_residual_connections') and
+        hparams.use_residual_connections)
+    base_rnn_cell = (
+        tf.contrib.rnn.LSTMBlockCell
+        if hasattr(hparams, 'use_block_cell') and hparams.use_block_cell
+        else tf.contrib.rnn.BasicLSTMCell)
+
+    if use_residual_connections:
+      # Project inputs to the same dimensionality as RNN layers so that
+      # residual connections can be used.
+      inputs_proj = tf.contrib.layers.linear(inputs, hparams.rnn_layer_sizes[0])
+    else:
+      inputs_proj = inputs
+
     cell = make_rnn_cell(
         hparams.rnn_layer_sizes,
         dropout_keep_prob=(
             1.0 if mode == 'generate' else hparams.dropout_keep_prob),
         attn_length=(
-            hparams.attn_length if hasattr(hparams, 'attn_length') else 0))
+            hparams.attn_length if hasattr(hparams, 'attn_length') else 0),
+        use_residual_connections=use_residual_connections,
+        base_cell=base_rnn_cell)
 
     initial_state = cell.zero_state(hparams.batch_size, tf.float32)
 
     outputs, final_state = tf.nn.dynamic_rnn(
-        cell, inputs, sequence_length=lengths, initial_state=initial_state,
+        cell, inputs_proj, sequence_length=lengths, initial_state=initial_state,
         swap_memory=True)
 
     outputs_flat = magenta.common.flatten_maybe_padded_sequences(
