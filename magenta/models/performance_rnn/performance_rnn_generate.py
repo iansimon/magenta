@@ -92,6 +92,12 @@ tf.app.flags.DEFINE_string(
     'sum to one. Similar to `notes_per_second`, this can also be a list of '
     'pitch class histograms.')
 tf.app.flags.DEFINE_string(
+    'chord_progression', 'C G Am F C G F C',
+    'When conditioning on chords, a string representation of the desired chord '
+    'progression, with chord symbols separated by spaces. For example: '
+    '"C Dm7 G13 Cmaj7". The chord progression will only be played once, with '
+    'each chord having equal duration.')
+tf.app.flags.DEFINE_string(
     'disable_conditioning', None,
     'When optional conditioning is available, a string representation of a '
     'Boolean indicating whether or not to disable conditioning. Similar to '
@@ -239,6 +245,9 @@ def run_with_flags(generator):
   if FLAGS.pitch_class_histogram is not None:
     generator_options.args['pitch_histogram'].string_value = (
         FLAGS.pitch_class_histogram)
+  if FLAGS.chord_progression is not None:
+    generator_options.args['chord_progression'].string_value = (
+        FLAGS.chord_progression)
   if FLAGS.disable_conditioning is not None:
     generator_options.args['disable_conditioning'].string_value = (
         FLAGS.disable_conditioning)
@@ -288,7 +297,11 @@ def main(unused_argv):
       note_density_conditioning=config.density_bin_ranges is not None,
       pitch_histogram_conditioning=(
           config.pitch_histogram_window_size is not None),
+      chord_conditioning=config.chord_conditioning,
+      meter_conditioning=config.divisions_per_quarter is not None,
       optional_conditioning=config.optional_conditioning,
+      quarters_per_bar=config.quarters_per_bar,
+      divisions_per_quarter=config.divisions_per_quarter,
       checkpoint=get_checkpoint(),
       bundle=bundle)
 

@@ -39,7 +39,8 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
   def generate_performance(
       self, num_steps, primer_sequence, temperature=1.0, beam_size=1,
       branch_factor=1, steps_per_iteration=1, note_density_fn=None,
-      pitch_histogram_fn=None, disable_conditioning_fn=None):
+      pitch_histogram_fn=None, chord_fn=None, meter_fn=None,
+      disable_conditioning_fn=None):
     """Generate a performance track from a primer performance track.
 
     Args:
@@ -58,6 +59,10 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
           or None if not conditioning on note density.
       pitch_histogram_fn: A function that maps time step to desired pitch
           histogram, or None if not conditioning on pitch histogram.
+      chord_fn: A function that maps time step to chord symbol, or None if not
+          conditioning on chords.
+      meter_fn: A function that maps time step to a (beat, division) meter
+          tuple, or None if not conditioning on meter.
       disable_conditioning_fn: A function that maps time step to whether or not
           conditioning should be disabled, or None if there is no conditioning
           or conditioning is not optional.
@@ -66,12 +71,17 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
       The generated Performance object (which begins with the provided primer
       track).
     """
-    if note_density_fn is not None or pitch_histogram_fn is not None:
+    if (note_density_fn is not None or pitch_histogram_fn is not None or
+        chord_fn is not None or meter_fn is not None):
       control_event = ()
       if note_density_fn is not None:
         control_event += (note_density_fn(0),)
       if pitch_histogram_fn is not None:
         control_event += (pitch_histogram_fn(0),)
+      if chord_fn is not None:
+        control_event += (chord_fn(0),)
+      if meter_fn is not None:
+        control_event += (meter_fn(0),)
       if disable_conditioning_fn is not None:
         control_event = (disable_conditioning_fn(0), control_event)
       control_events = [control_event]
@@ -79,7 +89,7 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
           current_perf_index=0, current_perf_step=0)
       extend_control_events_callback = functools.partial(
           _extend_control_events, note_density_fn, pitch_histogram_fn,
-          disable_conditioning_fn)
+          chord_fn, meter_fn, disable_conditioning_fn)
     else:
       control_events = None
       control_state = None
@@ -110,6 +120,7 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
     Returns:
       The log likelihood of `sequence` under this model.
     """
+    # TODO: how to handle chord/meter
     if note_density is not None or pitch_histogram is not None:
       control_event = ()
       if note_density is not None:
@@ -127,8 +138,8 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
 
 
 def _extend_control_events(note_density_fn, pitch_histogram_fn,
-                           disable_conditioning_fn, control_events, performance,
-                           control_state):
+                           chord_fn, meter_fn, disable_conditioning_fn,
+                           control_events, performance, control_state):
   """Extend a performance control sequence.
 
   Extends `control_events` -- a sequence of note densities, pitch class
@@ -143,6 +154,10 @@ def _extend_control_events(note_density_fn, pitch_histogram_fn,
           not conditioning on note density.
     pitch_histogram_fn: A function that maps time step to pitch histogram, or
           None if not conditioning on pitch histogram.
+    chord_fn: A function that maps time step to chord symbol, or None if not
+          conditioning on chords.
+    meter_fn: A function that maps time step to a (beat, division) meter tuple,
+          or None if not conditioning on meter.
     disable_conditioning_fn: A function that maps time step to whether or not
           conditioning should be disabled, or None if there is no conditioning
           or conditioning is not optional.
@@ -170,6 +185,10 @@ def _extend_control_events(note_density_fn, pitch_histogram_fn,
       control_event += (note_density_fn(step),)
     if pitch_histogram_fn is not None:
       control_event += (pitch_histogram_fn(step),)
+    if chord_fn is not None:
+      control_event += (chord_fn(step),)
+    if meter_fn is not None:
+      control_event += (meter_fn(step),)
     if disable_conditioning_fn is not None:
       control_event = (disable_conditioning_fn(step), control_event)
     control_events.append(control_event)

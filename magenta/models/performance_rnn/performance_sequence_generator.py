@@ -48,7 +48,9 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
   def __init__(self, model, details,
                steps_per_second=performance_lib.DEFAULT_STEPS_PER_SECOND,
                num_velocity_bins=0, note_density_conditioning=False,
-               pitch_histogram_conditioning=False, optional_conditioning=False,
+               pitch_histogram_conditioning=False, chord_conditioning=False,
+               meter_conditioning=False, optional_conditioning=False,
+               quarters_per_bar=4, divisions_per_quarter=24,
                max_note_duration=MAX_NOTE_DURATION_SECONDS,
                fill_generate_section=True, checkpoint=None, bundle=None):
     """Creates a PerformanceRnnSequenceGenerator.
@@ -62,7 +64,13 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       note_density_conditioning: If True, generate conditional on note density.
       pitch_histogram_conditioning: If True, generate conditional on pitch class
           histogram.
+      chord_conditioning: If True, generate conditional on chord symbol.
+      meter_conditioning: If True, generate conditional on metric position.
       optional_conditioning: If True, conditioning can be disabled dynamically.
+      quarters_per_bar: Number of quarter notes per bar (when conditioning on
+          meter).
+      divisions_per_quarter: Number of divisions per quarter note (when
+          conditioning on meter).
       max_note_duration: The maximum note duration in seconds to allow during
           generation. This model often forgets to release notes; specifying a
           maximum duration can force it to do so.
@@ -81,7 +89,11 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
     self.num_velocity_bins = num_velocity_bins
     self.note_density_conditioning = note_density_conditioning
     self.pitch_histogram_conditioning = pitch_histogram_conditioning
+    self.chord_conditioning = chord_conditioning
+    self.meter_conditioning = meter_conditioning
     self.optional_conditioning = optional_conditioning
+    self.quarters_per_bar = quarters_per_bar
+    self.divisions_per_quarter = divisions_per_quarter
     self.max_note_duration = max_note_duration
     self.fill_generate_section = fill_generate_section
 
@@ -151,6 +163,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
         'note_density': lambda arg: ast.literal_eval(arg.string_value),
         'pitch_histogram': lambda arg: ast.literal_eval(arg.string_value),
         'disable_conditioning': lambda arg: ast.literal_eval(arg.string_value),
+        'chord_progression': lambda arg: arg.string_value.split(),
         'temperature': lambda arg: arg.float_value,
         'beam_size': lambda arg: arg.int_value,
         'branch_factor': lambda arg: arg.int_value,
@@ -181,6 +194,17 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       tf.logging.warning(
           'Conditioning on pitch histogram but none requested, using default.')
       args['pitch_histogram'] = [DEFAULT_PITCH_HISTOGRAM]
+
+    # Make sure chord progression is present when conditioning on it and not
+    # present otherwise.
+    if not self.chord_conditioning and 'chord_progression' in args:
+      tf.logging.warning(
+          'Not conditioning on chords, ignoring requested chord progression.')
+      del args['chord_progression']
+    if self.chord_conditioning and 'chord_progression' not in args:
+      tf.logging.warning(
+          'Conditioning on chord progression but none requested, using N.C.')
+      args['chord_progression'] = [mm.NO_CHORD]
 
     # Make sure disable conditioning flag is present when conditioning is
     # optional and not present otherwise.
@@ -233,6 +257,19 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
           num_steps=total_steps,
           pitch_histograms=args['pitch_histogram'])
       del args['pitch_histogram']
+    if self.chord_conditioning:
+      args['chord_fn'] = partial(
+          _step_to_chord_symbol,
+          num_steps=total_steps,
+          chords=args['chord_progression'])
+      del args['chord_progression']
+    if self.meter_conditioning:
+      args['meter_fn'] = partial(
+          _step_to_meter_tuple,
+          steps_per_second=self.steps_per_second,
+          qpm=mm.DEFAULT_QUARTERS_PER_MINUTE,
+          quarters_per_bar=self.quarters_per_bar,
+          divisions_per_quarter=self.divisions_per_quarter)
     if self.optional_conditioning:
       args['disable_conditioning_fn'] = partial(
           _step_to_disable_conditioning,
@@ -289,6 +326,28 @@ def _step_to_pitch_histogram(step, num_steps, pitch_histograms):
   return pitch_histograms[index]
 
 
+def _step_to_chord_symbol(step, num_steps, chords):
+  """Map step in performance to desired chord symbol."""
+  index = _step_to_index(step, num_steps, len(chords))
+  return chords[index]
+
+
+def _step_to_meter_tuple(step, steps_per_second, qpm,
+                         quarters_per_bar, divisions_per_quarter):
+  """Map step in performance to metric position."""
+  bars_per_second = qpm / (60.0 * quarters_per_bar)
+  bars_per_step = bars_per_second / steps_per_second
+
+  bar_float = step * bars_per_step
+  bar_offset = bar_float - math.floor(bar_float)
+  quarter_float = bar_offset * quarters_per_bar
+  quarter = int(math.floor(quarter_float))
+  quarter_offset = quarter_float - quarter
+  division = int(math.floor(quarter_offset * divisions_per_quarter))
+
+  return (quarter + 1, division + 1)
+
+
 def _step_to_disable_conditioning(step, num_steps, disable_conditioning_flags):
   """Map step in performance to desired disable conditioning flag."""
   index = _step_to_index(step, num_steps, len(disable_conditioning_flags))
@@ -313,7 +372,11 @@ def get_generator_map():
         note_density_conditioning=config.density_bin_ranges is not None,
         pitch_histogram_conditioning=(
             config.pitch_histogram_window_size is not None),
+        chord_conditioning=config.chord_conditioning,
+        meter_conditioning=config.divisions_per_quarter is not None,
         optional_conditioning=config.optional_conditioning,
+        quarters_per_bar=config.quarters_per_bar,
+        divisions_per_quarter=config.divisions_per_quarter,
         fill_generate_section=False,
         **kwargs)
 
