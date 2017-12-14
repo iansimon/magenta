@@ -371,7 +371,7 @@ default_configs = {
                     quarters_per_bar=4, divisions_per_quarter=24)]),
             magenta.music.OneHotEventSequenceEncoderDecoder(
                 performance_encoder_decoder.PerformanceOneHotEncoding(
-                    num_velocity_bins=32))),
+                    num_velocity_bins=8))),
         tf.contrib.training.HParams(
             batch_size=64,
             rnn_layer_sizes=[128, 128, 128],
@@ -380,7 +380,7 @@ default_configs = {
             learning_rate=0.0003,
             use_residual_connections=True,
             use_block_cell=True),
-        num_velocity_bins=32,
+        num_velocity_bins=8,
         chord_conditioning=True,
         quarters_per_bar=4,
         divisions_per_quarter=24)

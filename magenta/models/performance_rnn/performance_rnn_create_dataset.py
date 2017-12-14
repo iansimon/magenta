@@ -300,8 +300,8 @@ def get_chord_conditioned_pipeline(config, min_events, max_events, eval_ratio):
     raise ValueError(
         'chord conditioning off in config for chord-conditioned pipeline')
 
-  # Transpose no more than a major third.
-  transposition_range = range(-3, 4)
+  # Transpose to all keys.
+  transposition_range = range(-6, 6)
 
   partitioner = pipelines_common.RandomPartition(
       music_pb2.NoteSequence,
@@ -344,7 +344,7 @@ def main(unused_argv):
 
   pipeline_instance = get_pipeline_fn(
       min_events=32,
-      max_events=512,
+      max_events=2048,
       eval_ratio=FLAGS.eval_ratio,
       config=config)
 
