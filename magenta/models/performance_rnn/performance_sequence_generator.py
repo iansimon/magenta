@@ -262,6 +262,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
           _step_to_chord_symbol,
           num_steps=total_steps,
           chords=args['chord_progression'])
+      chord_progression = args['chord_progression']
       del args['chord_progression']
     if self.meter_conditioning:
       args['meter_fn'] = partial(
@@ -304,6 +305,21 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
 
     generated_sequence = performance.to_sequence(
         max_note_duration=self.max_note_duration)
+
+    if 'chord_fn' in args:
+      # Add bass progression.
+      total_seconds = total_steps / self.steps_per_second
+      seconds_per_chord = total_seconds / len(chord_progression)
+      for i, chord in enumerate(chord_progression):
+        note = generated_sequence.notes.add()
+        note.start_time = i * seconds_per_chord
+        note.end_time = (i + 1) * seconds_per_chord
+        note.pitch = 36 + mm.chord_symbol_bass(chord)
+        note.velocity = 100
+        note.instrument = 1
+        note.program = 32
+        if note.end_time > generated_sequence.total_time:
+          generated_sequence.total_time = note.end_time
 
     assert (generated_sequence.total_time - generate_section.end_time) <= 1e-5
     return generated_sequence
