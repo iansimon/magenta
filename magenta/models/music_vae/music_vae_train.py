@@ -139,7 +139,14 @@ def train(train_dir,
       train_dataset = train_dataset.prefetch(FLAGS.prefetch_size)
 
       iterator = train_dataset.make_one_shot_iterator()
-      input_sequence, output_sequence, sequence_length = iterator.get_next()
+      if config.hparams.use_control_sequence:
+        input_sequence, output_sequence, control_sequence, sequence_length = (
+            iterator.get_next())
+        control_sequence.set_shape(
+            [batch_size, None, config.note_sequence_converter.control_depth])
+      else:
+        input_sequence, output_sequence, sequence_length = iterator.get_next()
+        control_sequence = None
       input_sequence.set_shape(
           [batch_size, None, config.note_sequence_converter.input_depth])
       output_sequence.set_shape(
@@ -151,7 +158,8 @@ def train(train_dir,
                   config.note_sequence_converter.output_depth,
                   is_training=True)
 
-      optimizer = model.train(input_sequence, output_sequence, sequence_length)
+      optimizer = model.train(input_sequence, output_sequence, sequence_length,
+                              control_sequence)
 
       hooks = []
       if num_sync_workers:
@@ -219,7 +227,15 @@ def evaluate(train_dir,
     eval_dataset = eval_dataset.prefetch(FLAGS.prefetch_size)
 
     iterator = eval_dataset.make_one_shot_iterator()
-    input_sequence, output_sequence, sequence_length = iterator.get_next()
+    if config.hparams.use_control_sequence:
+      input_sequence, output_sequence, control_sequence, sequence_length = (
+          iterator.get_next())
+      control_sequence.set_shape(
+          [config.hparams.batch_size, None,
+           config.note_sequence_converter.control_depth])
+    else:
+      input_sequence, output_sequence, sequence_length = iterator.get_next()
+      control_sequence = None
     input_sequence.set_shape(
         [config.hparams.batch_size, None,
          config.note_sequence_converter.input_depth])
@@ -233,7 +249,8 @@ def evaluate(train_dir,
                 config.note_sequence_converter.output_depth,
                 is_training=False)
 
-    eval_op = model.eval(input_sequence, output_sequence, sequence_length)
+    eval_op = model.eval(input_sequence, output_sequence, sequence_length,
+                         control_sequence)
 
     hooks = [
         tf.contrib.training.StopAfterNEvalsHook(num_batches),

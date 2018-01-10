@@ -65,10 +65,21 @@ class TrainedModel(object):
           tf.placeholder(tf.float32,
                          shape=[batch_size, self._config.hparams.z_size])
           if self._config.hparams.conditional else None)
+      self._c_input = (
+          tf.placeholder(
+              tf.float32,
+              shape=[None, self._config.note_sequence_converter.control_depth])
+          if self._config.hparams.use_control_sequence else None)
       self._inputs = tf.placeholder(
           tf.float32,
           shape=[batch_size, None,
                  self._config.note_sequence_converter.input_depth])
+      self._controls = (
+          tf.placeholder(
+              tf.float32,
+              shape=[batch_size, None,
+                     self._config.note_sequence_converter.control_depth])
+          if self._config.hparams.use_control_sequence else None)
       self._inputs_length = tf.placeholder(tf.int32, shape=[batch_size])
       self._max_length = tf.placeholder(tf.int32, shape=())
       # Outputs
@@ -76,10 +87,11 @@ class TrainedModel(object):
           batch_size,
           max_length=self._max_length,
           z=self._z_input,
+          c_input=self._c_input,
           temperature=self._temperature,
           **sample_kwargs)
       if self._config.hparams.conditional:
-        q_z = model.encode(self._inputs, self._inputs_length)
+        q_z = model.encode(self._inputs, self._inputs_length, self._controls)
         self._mu = q_z.loc
         self._sigma = q_z.scale.diag
         self._z = q_z.sample()
@@ -88,7 +100,8 @@ class TrainedModel(object):
       saver = tf.train.Saver()
       saver.restore(self._sess, checkpoint_path)
 
-  def sample(self, n=None, length=None, temperature=1.0, same_z=False):
+  def sample(self, n=None, length=None, temperature=1.0, same_z=False,
+             c_input=None):
     """Generates random samples from the model.
 
     Args:
@@ -99,8 +112,12 @@ class TrainedModel(object):
       temperature: The softmax temperature to use (if applicable).
       same_z: Whether to use the same latent vector for all samples in the
         batch (if applicable).
+      c_input: A sequence of control inputs to use for each sample (if
+        applicable).
+
     Returns:
       A list of samples as NoteSequence objects.
+
     Raises:
       ValueError: If `length` is not specified and an end token is not being
         used.
@@ -127,11 +144,19 @@ class TrainedModel(object):
         z = np.random.randn(batch_size, z_size).astype(np.float32)
       feed_dict[self._z_input] = z
 
+    if self._c_input is not None:
+      feed_dict[self._c_input] = c_input
+
     outputs = []
     for _ in range(int(np.ceil(n / batch_size))):
       outputs.append(self._sess.run(self._outputs, feed_dict))
-    return self._config.note_sequence_converter.to_notesequences(
-        np.vstack(outputs)[:n])
+    if self._c_input is not None:
+      return self._config.note_sequence_converter.to_notesequences(
+          np.vstack(outputs)[:n],
+          np.tile(np.expand_dims(c_input, 0), [batch_size, 1, 1]))
+    else:
+      return self._config.note_sequence_converter.to_notesequences(
+          np.vstack(outputs)[:n])
 
   def encode(self, note_sequences, assert_same_length=False):
     """Encodes a collection of NoteSequences into latent vectors.
@@ -153,9 +178,15 @@ class TrainedModel(object):
       raise RuntimeError('Cannot encode with a non-conditional model.')
 
     inputs = []
+    controls = []
     for note_sequence in note_sequences:
-      extracted_inputs, _ = self._config.note_sequence_converter.to_tensors(
-          note_sequence)
+      if self._config.hparams.use_control_sequence:
+        extracted_inputs, _, extracted_controls = (
+            self._config.note_sequence_converter.to_tensors(note_sequence))
+      else:
+        extracted_inputs, _ = self._config.note_sequence_converter.to_tensors(
+            note_sequence)
+        extracted_controls = None
       if not extracted_inputs:
         raise NoExtractedExamplesException(
             'No examples extracted from NoteSequence: %s' % note_sequence)
@@ -164,24 +195,33 @@ class TrainedModel(object):
             'Multiple (%d) examples extracted from NoteSequence: %s' %
             (len(extracted_inputs), note_sequence))
       inputs.append(extracted_inputs[0])
+      if self._config.hparams.use_control_sequence:
+        controls.append(extracted_controls[0])
       if assert_same_length and len(inputs[0]) != len(inputs[-1]):
         raise AssertionError(
             'Sequences 0 and %d have different lengths: %d vs %d' %
             (len(inputs) - 1, len(inputs[0]), len(inputs[-1])))
-    return self.encode_tensors(inputs)
+    return self.encode_tensors(inputs, controls)
 
-  def encode_tensors(self, input_tensors):
+  def encode_tensors(self, input_tensors, control_tensors=None):
     """Encodes a collection of input tensors into latent vectors.
 
     Args:
       input_tensors: Collection of input tensors to encode.
+      control_tensors: Collection of control tensors to encode.
+
     Returns:
       The encoded `z`, `mu`, and `sigma` values.
+
     Raises:
        RuntimeError: If called for a non-conditional model.
     """
     if not self._config.hparams.conditional:
       raise RuntimeError('Cannot encode with a non-conditional model.')
+
+    if self._config.hparams.use_control_sequence != (
+        control_tensors is not None):
+      raise RuntimeError('Control sequence usage mismatch.')
 
     n = len(input_tensors)
     input_depth = self._config.note_sequence_converter.input_depth
@@ -196,18 +236,27 @@ class TrainedModel(object):
     for i in range(len(input_tensors)):
       inputs_array[i, :inputs_length[i]] = input_tensors[i]
 
+    if self._config.hparams.use_control_sequence:
+      control_depth = self._config.note_sequence_converter.control_depth
+      control_tensors += [np.zeros([0, control_depth])] * batch_pad_amt
+      controls_array = np.zeros(
+          [len(control_tensors), max(inputs_length), control_depth])
+      for i in range(len(control_tensors)):
+        controls_array[i, :inputs_length[i]] = control_tensors[i]
     outputs = []
     for i in range(len(inputs_array) // batch_size):
       batch_begin = i * batch_size
       batch_end = (i+1) * batch_size
       feed_dict = {self._inputs: inputs_array[batch_begin:batch_end],
                    self._inputs_length: inputs_length[batch_begin:batch_end]}
+      if self._config.hparams.use_control_sequence:
+        feed_dict[self._controls] = controls_array[batch_begin:batch_end]
       outputs.append(
           self._sess.run([self._z, self._mu, self._sigma], feed_dict))
     assert outputs
     return tuple(np.vstack(v)[:n] for v in zip(*outputs))
 
-  def decode(self, z, length=None, temperature=1.0):
+  def decode(self, z, length=None, temperature=1.0, c_input=None):
     """Decodes a collection of latent vectors into NoteSequences.
 
     Args:
@@ -215,17 +264,26 @@ class TrainedModel(object):
       length: The maximum length of a sample in decoder iterations. Required
         if end tokens are not being used.
       temperature: The softmax temperature to use (if applicable).
+      c_input: Control sequence (if applicable).
+
     Returns:
       A list of decodings as NoteSequence objects.
+
     Raises:
       RuntimeError: If called for a non-conditional model.
       ValueError: If `length` is not specified and an end token is not being
         used.
     """
-    return self._config.note_sequence_converter.to_notesequences(
-        self.decode_to_tensors(z, length, temperature))
+    tensors = self.decode_to_tensors(z, length, temperature, c_input)
+    if c_input is not None:
+      return self._config.note_sequence_converter.to_notesequences(
+          tensors,
+          np.tile(np.expand_dims(c_input, 0),
+                  [self._config.hparams.batch_size, 1, 1]))
+    else:
+      return self._config.note_sequence_converter.to_notesequences(tensors)
 
-  def decode_to_tensors(self, z, length=None, temperature=1.0):
+  def decode_to_tensors(self, z, length=None, temperature=1.0, c_input=None):
     """Decodes a collection of latent vectors into output tensors.
 
     Args:
@@ -233,8 +291,11 @@ class TrainedModel(object):
       length: The maximum length of a sample in decoder iterations. Required
         if end tokens are not being used.
       temperature: The softmax temperature to use (if applicable).
+      c_input: Control sequence (if applicable).
+
     Returns:
       Outputs from decoder as a 2D numpy array.
+
     Raises:
       RuntimeError: If called for a non-conditional model.
       ValueError: If `length` is not specified and an end token is not being
@@ -260,5 +321,7 @@ class TrainedModel(object):
           self._z_input: z[i*batch_size:(i+1)*batch_size],
           self._max_length: length,
       }
+      if self._c_input is not None:
+        feed_dict[self._c_input] = c_input
       outputs.extend(self._sess.run(self._outputs, feed_dict))
     return outputs[:n]
