@@ -46,6 +46,7 @@ def make_rnn_cell(rnn_layer_sizes,
   cells = []
   for num_units in rnn_layer_sizes:
     cell = base_cell(num_units)
+    cell = tf.contrib.rnn.ResidualWrapper(cell)
     if attn_length and not cells:
       # Add attention wrapper to first layer.
       cell = tf.contrib.rnn.AttentionCellWrapper(
@@ -103,6 +104,8 @@ def get_build_graph_fn(mode, config, sequence_example_file_paths=None):
       inputs = tf.placeholder(tf.float32, [hparams.batch_size, None,
                                            input_size])
 
+    inputs_proj = tf.contrib.layers.linear(inputs, hparams.rnn_layer_sizes[0])
+
     cell = make_rnn_cell(
         hparams.rnn_layer_sizes,
         dropout_keep_prob=(
@@ -113,7 +116,7 @@ def get_build_graph_fn(mode, config, sequence_example_file_paths=None):
     initial_state = cell.zero_state(hparams.batch_size, tf.float32)
 
     outputs, final_state = tf.nn.dynamic_rnn(
-        cell, inputs, sequence_length=lengths, initial_state=initial_state,
+        cell, inputs_proj, sequence_length=lengths, initial_state=initial_state,
         swap_memory=True)
 
     outputs_flat = magenta.common.flatten_maybe_padded_sequences(
