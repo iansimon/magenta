@@ -29,9 +29,6 @@ from magenta.protobuf import music_pb2
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
 
-DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
-DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
-
 # Shortcut to CHORD_SYMBOL annotation type.
 CHORD_SYMBOL = music_pb2.NoteSequence.TextAnnotation.CHORD_SYMBOL
 
@@ -40,7 +37,7 @@ class MelodyChordsMismatchException(Exception):
   pass
 
 
-class LeadSheet(events_lib.EventSequence):
+class LeadSheet(events_lib.MetricEventSequence):
   """A wrapper around Melody and ChordProgression.
 
   Attributes:

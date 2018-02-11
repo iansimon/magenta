@@ -32,7 +32,7 @@ MIN_MIDI_PITCH = 21  # Min piano pitch.
 STANDARD_PPQ = constants.STANDARD_PPQ
 
 
-class PianorollSequence(events_lib.EventSequence):
+class PianorollSequence(events_lib.MetricEventSequence):
   """Stores a polyphonic sequence as a pianoroll.
 
   Events are collections of active pitches at each step, offset from

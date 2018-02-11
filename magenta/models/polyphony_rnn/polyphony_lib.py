@@ -69,7 +69,7 @@ class PolyphonicEvent(object):
             self.pitch == other.pitch)
 
 
-class PolyphonicSequence(events_lib.EventSequence):
+class PolyphonicSequence(events_lib.MetricEventSequence):
   """Stores a polyphonic sequence as a stream of single-note events.
 
   Events are PolyphonicEvent tuples that encode event type and pitch.

@@ -25,6 +25,7 @@ import copy
 from magenta.music import constants
 
 
+DEFAULT_QUARTERS_PER_MINUTE = constants.DEFAULT_QUARTERS_PER_MINUTE
 DEFAULT_STEPS_PER_BAR = constants.DEFAULT_STEPS_PER_BAR
 DEFAULT_STEPS_PER_QUARTER = constants.DEFAULT_STEPS_PER_QUARTER
 STANDARD_PPQ = constants.STANDARD_PPQ
@@ -66,6 +67,16 @@ class EventSequence(object):
 
   @abc.abstractproperty
   def steps(self):
+    pass
+
+  @abc.abstractmethod
+  def event_times(self):
+    """Returns the time in seconds at each event of the sequence.
+
+    Returns:
+      A Python list containing the time in seconds at each event of the
+      sequence.
+    """
     pass
 
   @abc.abstractmethod
@@ -111,7 +122,34 @@ class EventSequence(object):
     pass
 
 
-class SimpleEventSequence(EventSequence):
+class MetricEventSequence(EventSequence):
+  """EventSequence with steps measured relative to the quarter note.
+
+  Attributes:
+    steps_per_quarter: Number of steps in in a quarter note.
+  """
+  __metaclass__ = abc.ABCMeta
+
+  @abc.abstractproperty
+  def steps_per_quarter(self):
+    pass
+
+  def event_times(self, qpm=DEFAULT_QUARTERS_PER_MINUTE):
+    """Returns the time in seconds at each event of the sequence.
+
+    Args:
+      qpm: The tempo for which to compute event times, in quarter notes per
+          minute.
+
+    Returns:
+      A Python list containing the time in seconds at each event of the
+      sequence.
+    """
+    seconds_per_step = 60.0 / (self.steps_per_quarter * qpm)
+    return [seconds_per_step * step for step in self.steps]
+
+
+class SimpleEventSequence(MetricEventSequence):
   """Stores a quantized stream of events.
 
   This class can be instantiated, but its main purpose is to serve as a base

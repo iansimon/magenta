@@ -79,6 +79,17 @@ class EventsLibTest(tf.test.TestCase):
     self.assertEquals(4, events.end_step)
     self.assertListEqual([1, 2, 3], events.steps)
 
+  def testEventTimes(self):
+    events = events_lib.SimpleEventSequence(
+        pad_event=0, events=[99] * 4, steps_per_quarter=1)
+    times = events.event_times(qpm=60.0)
+    self.assertListEqual([0, 1, 2, 3], times)
+
+    events = events_lib.SimpleEventSequence(
+        pad_event=0, events=[99] * 4, start_step=5, steps_per_quarter=1)
+    times = events.event_times(qpm=60.0)
+    self.assertListEqual([5, 6, 7, 8], times)
+
   def testIncreaseResolution(self):
     events = events_lib.SimpleEventSequence(pad_event=0, events=[1, 0, 1, 0],
                                             start_step=5, steps_per_bar=4,

@@ -39,6 +39,7 @@ MIN_MIDI_VELOCITY = constants.MIN_MIDI_VELOCITY
 MAX_NUM_VELOCITY_BINS = MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1
 
 STANDARD_PPQ = constants.STANDARD_PPQ
+DEFAULT_QUARTERS_PER_MINUTE = constants.DEFAULT_QUARTERS_PER_MINUTE
 
 DEFAULT_MAX_SHIFT_STEPS = 100
 DEFAULT_MAX_SHIFT_QUARTERS = 4
@@ -262,6 +263,10 @@ class BasePerformance(events_lib.EventSequence):
       if event.event_type == PerformanceEvent.TIME_SHIFT:
         step += event.event_value
     return result
+
+  def _event_times(self, seconds_per_step):
+    """Returns the time in seconds at each event of the sequence."""
+    return [seconds_per_step * step for step in self.steps]
 
   @staticmethod
   def _from_quantized_sequence(quantized_sequence, start_step,
@@ -487,6 +492,10 @@ class Performance(BasePerformance):
   def steps_per_second(self):
     return self._steps_per_second
 
+  def event_times(self):
+    """Returns the time in seconds at each event of the sequence."""
+    return self._event_times(1.0 / self.steps_per_second)
+
   def to_sequence(self,
                   velocity=100,
                   instrument=0,
@@ -565,6 +574,11 @@ class MetricPerformance(BasePerformance):
   @property
   def steps_per_quarter(self):
     return self._steps_per_quarter
+
+  def event_times(self, qpm=DEFAULT_QUARTERS_PER_MINUTE):
+    """Returns the time in seconds at each event of the sequence."""
+    seconds_per_step = 60.0 / (self.steps_per_quarter * qpm)
+    return self._event_times(seconds_per_step)
 
   def to_sequence(self,
                   velocity=100,
