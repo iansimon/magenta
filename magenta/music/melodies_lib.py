@@ -96,8 +96,6 @@ class Melody(events_lib.SimpleEventSequence):
 
   def __init__(self, events=None, **kwargs):
     """Construct a Melody."""
-    if 'pad_event' in kwargs:
-      del kwargs['pad_event']
     super(Melody, self).__init__(pad_event=MELODY_NO_EVENT,
                                  events=events, **kwargs)
 

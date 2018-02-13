@@ -92,6 +92,17 @@ class EventSequence(object):
     pass
 
   @abc.abstractmethod
+  def to_sequence(self, velocity):
+    """Converts the event sequence to NoteSequence proto.
+
+    Args:
+      velocity: MIDI velocity to use in the NoteSequence.
+
+    Returns:
+      A NoteSequence proto encoding the event sequence.
+    """
+
+  @abc.abstractmethod
   def __getitem__(self, i):
     """Returns the event at the given index."""
     pass
@@ -114,10 +125,6 @@ class EventSequence(object):
 class SimpleEventSequence(EventSequence):
   """Stores a quantized stream of events.
 
-  This class can be instantiated, but its main purpose is to serve as a base
-  class for Melody, ChordProgression, and any other simple stream of musical
-  events.
-
   SimpleEventSequence represents an iterable object. Simply iterate to retrieve
   the events.
 
@@ -131,6 +138,7 @@ class SimpleEventSequence(EventSequence):
     steps_per_quarter: Number of steps in in a quarter note.
     steps_per_bar: Number of steps in a bar (measure) of music.
   """
+  __metaclass__ = abc.ABCMeta
 
   def __init__(self, pad_event, events=None, start_step=0,
                steps_per_bar=DEFAULT_STEPS_PER_BAR,
@@ -191,11 +199,12 @@ class SimpleEventSequence(EventSequence):
       return self._events[key]
     elif isinstance(key, slice):
       events = self._events.__getitem__(key)
-      return type(self)(pad_event=self._pad_event,
-                        events=events,
+      # pylint: disable=abstract-class-instantiated
+      return type(self)(events=events,
                         start_step=self.start_step + (key.start or 0),
                         steps_per_bar=self.steps_per_bar,
                         steps_per_quarter=self.steps_per_quarter)
+      # pylint: enable=abstract-class-instantiated
 
   def __len__(self):
     """How many events are in this SimpleEventSequence.
@@ -206,11 +215,12 @@ class SimpleEventSequence(EventSequence):
     return len(self._events)
 
   def __deepcopy__(self, memo=None):
-    return type(self)(pad_event=self._pad_event,
-                      events=copy.deepcopy(self._events, memo),
+    # pylint: disable=abstract-class-instantiated
+    return type(self)(events=copy.deepcopy(self._events, memo),
                       start_step=self.start_step,
                       steps_per_bar=self.steps_per_bar,
                       steps_per_quarter=self.steps_per_quarter)
+    # pylint: enable=abstract-class-instantiated
 
   def __eq__(self, other):
     if type(self) is not type(other):
