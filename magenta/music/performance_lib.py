@@ -91,7 +91,8 @@ class BasePerformance(events_lib.EventSequence):
   """
   __metaclass__ = abc.ABCMeta
 
-  def __init__(self, start_step, num_velocity_bins, max_shift_steps):
+  def __init__(self, start_step, num_velocity_bins, max_shift_steps,
+               program=None, is_drum=None):
     """Construct a BasePerformance.
 
     Args:
@@ -99,6 +100,9 @@ class BasePerformance(events_lib.EventSequence):
           source sequence.
       num_velocity_bins: Number of velocity bins to use.
       max_shift_steps: Maximum number of steps for a single time-shift event.
+      program: MIDI program used for this performance, or None if not specified.
+      is_drum: Whether or not this performance consists of drums, or None if not
+          specified.
 
     Raises:
       ValueError: If `num_velocity_bins` is larger than the number of MIDI
@@ -111,6 +115,8 @@ class BasePerformance(events_lib.EventSequence):
     self._start_step = start_step
     self._num_velocity_bins = num_velocity_bins
     self._max_shift_steps = max_shift_steps
+    self._program = program
+    self._is_drum = is_drum
 
   @property
   def start_step(self):
@@ -119,6 +125,14 @@ class BasePerformance(events_lib.EventSequence):
   @property
   def max_shift_steps(self):
     return self._max_shift_steps
+
+  @property
+  def program(self):
+    return self._program
+
+  @property
+  def is_drum(self):
+    return self._is_drum
 
   def _append_steps(self, num_steps):
     """Adds steps to the end of the sequence."""
@@ -264,6 +278,21 @@ class BasePerformance(events_lib.EventSequence):
     return result
 
   @staticmethod
+  def _program_and_is_drum_from_sequence(sequence, instrument=None):
+    """Get MIDI program and is_drum from sequence and (optional) instrument."""
+    notes = [note for note in quantized_sequence.notes
+             if instrument is None or note.instrument == instrument]
+    programs = set(note.program for note in notes)
+    program = programs.pop() if len(programs) == 1 else None
+    if all(note.is_drum for note in notes):
+      is_drum = True
+    elif all(not note.is_drum for note in notes):
+      is_drum = False
+    else:
+      is_drum = None
+    return program, is_drum
+
+  @staticmethod
   def _from_quantized_sequence(quantized_sequence, start_step,
                                num_velocity_bins, max_shift_steps,
                                instrument=None):
@@ -287,7 +316,7 @@ class BasePerformance(events_lib.EventSequence):
       A list of events.
     """
     notes = [note for note in quantized_sequence.notes
-             if not note.is_drum and note.quantized_start_step >= start_step
+             if note.quantized_start_step >= start_step
              and (instrument is None or note.instrument == instrument)]
     sorted_notes = sorted(notes, key=lambda note: (note.start_time, note.pitch))
 
@@ -479,15 +508,21 @@ class Performance(BasePerformance):
       self._events = self._from_quantized_sequence(
           quantized_sequence, start_step, num_velocity_bins,
           max_shift_steps=max_shift_steps, instrument=instrument)
+      program, is_drum = _program_and_is_drum_from_sequence(
+          quantized_sequence, instrument)
 
     else:
       self._steps_per_second = steps_per_second
       self._events = []
+      program = None
+      is_drum = None
 
     super(Performance, self).__init__(
         start_step=start_step,
         num_velocity_bins=num_velocity_bins,
-        max_shift_steps=max_shift_steps)
+        max_shift_steps=max_shift_steps,
+        program=program,
+        is_drum=is_drum)
 
   @property
   def steps_per_second(self):
@@ -561,15 +596,21 @@ class MetricPerformance(BasePerformance):
           quantized_sequence, start_step, num_velocity_bins,
           max_shift_steps=self._steps_per_quarter * max_shift_quarters,
           instrument=instrument)
+      program, is_drum = _program_and_is_drum_from_sequence(
+          quantized_sequence, instrument)
 
     else:
       self._steps_per_quarter = steps_per_quarter
       self._events = []
+      program = None
+      is_drum = None
 
     super(MetricPerformance, self).__init__(
         start_step=start_step,
         num_velocity_bins=num_velocity_bins,
-        max_shift_steps=self._steps_per_quarter * max_shift_quarters)
+        max_shift_steps=self._steps_per_quarter * max_shift_quarters,
+        program=program,
+        is_drum=is_drum)
 
   @property
   def steps_per_quarter(self):
