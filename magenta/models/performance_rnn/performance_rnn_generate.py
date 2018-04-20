@@ -122,6 +122,9 @@ tf.app.flags.DEFINE_string(
     'the hyperparameter named `name` is set to `value`. This mapping is merged '
     'with the default hyperparameters.')
 
+for lksdjflskdjf:
+  tf.app.flags.DEFINE_string(control.name, None, control.description)
+
 
 def get_checkpoint():
   """Get the training dir or checkpoint path to be used by the model."""
@@ -285,6 +288,8 @@ def main(unused_argv):
       details=config.details,
       steps_per_second=config.steps_per_second,
       num_velocity_bins=config.num_velocity_bins,
+      control_signals=config.control_signals,
+      optional_conditioning=config.optional_conditioning,
       note_density_conditioning=config.density_bin_ranges is not None,
       pitch_histogram_conditioning=(
           config.pitch_histogram_window_size is not None),

@@ -142,7 +142,12 @@ class PitchHistogramEncoder(encoder_decoder.EventSequenceEncoderDecoder):
     raise NotImplementedError
 
   def events_to_input(self, events, position):
-    return events[position]
+    # Normalize by the total weight.
+    total = sum(events[position])
+    if total > 0:
+      return [count / total for count in events[position]]
+    else:
+      return [1.0 / NOTES_PER_OCTAVE] * NOTES_PER_OCTAVE
 
   def events_to_label(self, events, position):
     raise NotImplementedError
