@@ -13,44 +13,76 @@
 # limitations under the License.
 """Classes for computing performance control signals."""
 
+from __future__ import division
+
 import abc
+import numbers
+
+# internal imports
+from magenta.music import constants
+from magenta.music import encoder_decoder
+from magenta.music import performance_lib
+from magenta.music.performance_lib import PerformanceEvent
+
+NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
+DEFAULT_NOTE_DENSITY = 15.0
+DEFAULT_PITCH_HISTOGRAM = [1.0] * NOTES_PER_OCTAVE
 
 
 class PerformanceControlSignal(object):
-  """slkdfjlsdkfjlsdkfj"""
+  """Control signal used for conditional generation of performances.
+
+  The two main components of the control signal (that must be implemented in
+  subclasses) are the `extract` method that extracts the control signal values
+  from a Performance object, and the `encoder` class that transforms these
+  control signal values into model inputs.
+  """
   __metaclass__ = abc.ABCMeta
 
-  def __init__(self, name, description):
-    """skdlfjsldkfjslkj"""
-    self._name = name
-    self._description = description
-
-  @property
+  @abc.abstractproperty
   def name(self):
-    return self._name
-
-  @property
-  def description(self):
-    return self._description
+    """Name of the control signal."""
+    pass
 
   @abc.abstractproperty
-  def default_value(self):
-    """lsdkfjlskjdf"""
+  def description(self):
+    """Description of the control signal."""
     pass
 
   @abc.abstractmethod
-  def extract(self, performance):
-    """sldjflsdkjflsdkfj"""
+  def validate(self, value):
+    """Validate a control signal value."""
+    pass
+
+  @abc.abstractproperty
+  def default_value(self):
+    """Default value of the (unencoded) control signal."""
     pass
 
   @abc.abstractproperty
   def encoder(self):
-    """sldkfjsldkfj"""
+    """Instantiated encoder object for the control signal."""
+    pass
+
+  @abc.abstractmethod
+  def extract(self, performance):
+    """Extract a sequence of control values from a Performance object.
+
+    Args:
+      performance: The Performance object from which to extract control signal
+          values.
+
+    Returns:
+      A sequence of control signal values the same length as `performance`.
+    """
     pass
 
 
 class NoteDensityPerformanceControlSignal(PerformanceControlSignal):
-  """sldkfjlsdkf"""
+  """Note density (notes per second) performance control signal."""
+
+  name = 'notes_per_second'
+  description = 'Desired number of notes per second.'
 
   def __init__(self, window_size_seconds, density_bin_ranges):
     """Initialize a NoteDensityPerformanceControlSignal.
@@ -58,10 +90,25 @@ class NoteDensityPerformanceControlSignal(PerformanceControlSignal):
     Args:
       window_size_seconds: The size of the window, in seconds, used to compute
           note density (notes per second).
+      density_bin_ranges: List of note density (notes per second) bin boundaries
+          to use when quantizing. The number of bins will be one larger than the
+          list length.
     """
-    # TODO: super
     self._window_size_seconds = window_size_seconds
     self._density_bin_ranges = density_bin_ranges
+    self._encoder = encoder_decoder.OneHotEventSequenceEncoderDecoder(
+        self.NoteDensityOneHotEncoding(density_bin_ranges))
+
+  def validate(self, value):
+    return isinstance(value, numbers.Number) and value >= 0.0
+
+  @property
+  def default_value(self):
+    return DEFAULT_NOTE_DENSITY
+
+  @property
+  def encoder(self):
+    return self._encoder
 
   def extract(performance):
     """Computes note density at every event in a performance.
@@ -110,7 +157,8 @@ class NoteDensityPerformanceControlSignal(PerformanceControlSignal):
       actual_window_size_steps = min(step_offset, window_size_steps)
       if actual_window_size_steps > 0:
         density = (
-            note_count * performance.steps_per_second / actual_window_size_steps)
+            note_count * performance.steps_per_second /
+            actual_window_size_steps)
       else:
         density = 0.0
 
@@ -121,9 +169,49 @@ class NoteDensityPerformanceControlSignal(PerformanceControlSignal):
 
     return density_sequence
 
+  class NoteDensityOneHotEncoding(encoder_decoder.OneHotEncoding):
+    """One-hot encoding for performance note density events.
+
+    Encodes by quantizing note density events. When decoding, always decodes to
+    the minimum value for each bin. The first bin starts at zero note density.
+    """
+
+    def __init__(self, density_bin_ranges):
+      """Initialize a NoteDensityOneHotEncoding.
+
+      Args:
+        density_bin_ranges: List of note density (notes per second) bin
+            boundaries to use when quantizing. The number of bins will be one
+            larger than the list length.
+      """
+      self._density_bin_ranges = density_bin_ranges
+
+    @property
+    def num_classes(self):
+      return len(self._density_bin_ranges) + 1
+
+    @property
+    def default_event(self):
+      return 0.0
+
+    def encode_event(self, event):
+      for idx, density in enumerate(self._density_bin_ranges):
+        if event < density:
+          return idx
+      return len(self._density_bin_ranges)
+
+    def decode_event(self, index):
+      if index == 0:
+        return 0.0
+      else:
+        return self._density_bin_ranges[index - 1]
+
 
 class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
-  """sldkfjlsdkjfslkj"""
+  """Pitch class histogram performance control signal."""
+
+  name = 'pitch_class_histogram'
+  description = 'Desired weight for each for each of the 12 pitch classes.'
 
   def __init__(self, window_size_seconds, prior_count=0.01):
     """Initializes a PitchHistogramPerformanceControlSignal.
@@ -134,9 +222,21 @@ class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
       prior_count: A prior count to smooth the resulting histograms. This value
           will be added to the actual pitch class counts.
     """
-    # TODO: super
     self._window_size_seconds = window_size_seconds
     self._prior_count = prior_count
+    self._encoder = self.PitchHistogramEncoder()
+
+  @property
+  def default_value(self):
+    return DEFAULT_PITCH_HISTOGRAM
+
+  def validate(self, value):
+    return (isinstance(value, list) and len(value) == NOTES_PER_OCTAVE and
+            all(isinstance(a, numbers.Number) for a in value))
+
+  @property
+  def encoder(self):
+    return self._encoder
 
   def extract(performance):
     """Computes local pitch class histogram at every event in a performance.
@@ -154,7 +254,7 @@ class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
         window_size_seconds * performance.steps_per_second))
 
     prev_event_type = None
-    prev_histogram = [1.0 / NOTES_PER_OCTAVE] * NOTES_PER_OCTAVE
+    prev_histogram = self.default_value
 
     base_active_pitches = set()
     histogram_sequence = []
@@ -199,3 +299,39 @@ class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
       prev_histogram = histogram
 
     return histogram_sequence
+
+  class PitchHistogramEncoder(encoder_decoder.EventSequenceEncoderDecoder):
+    """An encoder for pitch class histogram sequences."""
+
+    @property
+    def input_size(self):
+      return NOTES_PER_OCTAVE
+
+    @property
+    def num_classes(self):
+      raise NotImplementedError
+
+    @property
+    def default_event_label(self):
+      raise NotImplementedError
+
+    def events_to_input(self, events, position):
+      # Normalize by the total weight.
+      total = sum(events[position])
+      if total > 0:
+        return [count / total for count in events[position]]
+      else:
+        return [1.0 / NOTES_PER_OCTAVE] * NOTES_PER_OCTAVE
+
+    def events_to_label(self, events, position):
+      raise NotImplementedError
+
+    def class_index_to_event(self, class_index, events):
+      raise NotImplementedError
+
+
+# List of performance control signal classes.
+all_performance_control_signals = [
+    NoteDensityPerformanceControlSignal,
+    PitchHistogramPerformanceControlSignal
+]

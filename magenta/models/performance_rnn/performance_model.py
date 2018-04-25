@@ -37,7 +37,7 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
 
   def generate_performance(
       self, num_steps, primer_sequence, temperature=1.0, beam_size=1,
-      branch_factor=1, steps_per_iteration=1, control_signals_fn=None,
+      branch_factor=1, steps_per_iteration=1, control_signal_fns=None,
       disable_conditioning_fn=None):
     """Generate a performance track from a primer performance track.
 
@@ -53,8 +53,8 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
       branch_factor: An integer, beam search branch factor to use.
       steps_per_iteration: An integer, number of steps to take per beam search
           iteration.
-      control_signals_fn: A function that maps time step to desired control
-          values, or none if not using control signals.
+      control_signal_fns: A list of functions that map time step to desired
+          control value, or None if not using control signals.
       disable_conditioning_fn: A function that maps time step to whether or not
           conditioning should be disabled, or None if there is no conditioning
           or conditioning is not optional.
@@ -63,20 +63,15 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
       The generated Performance object (which begins with the provided primer
       track).
     """
-    if note_density_fn is not None or pitch_histogram_fn is not None:
-      control_event = ()
-      if note_density_fn is not None:
-        control_event += (note_density_fn(0),)
-      if pitch_histogram_fn is not None:
-        control_event += (pitch_histogram_fn(0),)
+    if control_signal_fns:
+      control_event = tuple(f(0) for f in control_signal_fns)
       if disable_conditioning_fn is not None:
         control_event = (disable_conditioning_fn(0), control_event)
       control_events = [control_event]
       control_state = PerformanceControlState(
           current_perf_index=0, current_perf_step=0)
       extend_control_events_callback = functools.partial(
-          _extend_control_events, note_density_fn, pitch_histogram_fn,
-          disable_conditioning_fn)
+          _extend_control_events, control_signal_fns, disable_conditioning_fn)
     else:
       control_events = None
       control_state = None
@@ -88,17 +83,13 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
         control_state=control_state,
         extend_control_events_callback=extend_control_events_callback)
 
-  def performance_log_likelihood(self, sequence, note_density=None,
-                                 pitch_histogram=None,
-                                 disable_conditioning=None):
+  def performance_log_likelihood(self, sequence, control_values,
+                                 disable_conditioning):
     """Evaluate the log likelihood of a performance.
 
     Args:
       sequence: The Performance object for which to evaluate the log likelihood.
-      note_density: Control note density on which performance is conditioned. If
-          None, don't condition on note density.
-      pitch_histogram: Control pitch class histogram on which performance is
-          conditioned. If None, don't condition on pitch class histogram.
+      control_values: List of (single) values for all control signal.
       disable_conditioning: Whether or not to disable optional conditioning. If
           True, disable conditioning. If False, do not disable. None when no
           conditioning or it is not optional.
@@ -107,12 +98,8 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
     Returns:
       The log likelihood of `sequence` under this model.
     """
-    if note_density is not None or pitch_histogram is not None:
-      control_event = ()
-      if note_density is not None:
-        control_event += (note_density,)
-      if pitch_histogram is not None:
-        control_event += (pitch_histogram,)
+    if control_values:
+      control_event = tuple(control_values)
       if disable_conditioning is not None:
         control_event = (disable_conditioning, control_event)
       control_events = [control_event] * len(sequence)
@@ -123,26 +110,23 @@ class PerformanceRnnModel(events_rnn_model.EventSequenceRnnModel):
         [sequence], control_events=control_events)[0]
 
 
-def _extend_control_events(note_density_fn, pitch_histogram_fn,
-                           disable_conditioning_fn, control_events, performance,
-                           control_state):
+def _extend_control_events(control_signal_fns, disable_conditioning_fn,
+                           control_events, performance, control_state):
   """Extend a performance control sequence.
 
-  Extends `control_events` -- a sequence of note densities, pitch class
-  histograms, or both -- to be one event longer than `performance`, so the next
-  event of `performance` can be conditionally generated.
+  Extends `control_events` -- a sequence of control signal value tuples -- to be
+  one event longer than `performance`, so the next event of `performance` can be
+  conditionally generated.
 
   This function is meant to be used as the `extend_control_events_callback`
   in the `_generate_events` method of `EventSequenceRnnModel`.
 
   Args:
-    note_density_fn: A function that maps time step to note density, or None if
-          not conditioning on note density.
-    pitch_histogram_fn: A function that maps time step to pitch histogram, or
-          None if not conditioning on pitch histogram.
+    control_signal_fns: A list of functions that map time step to desired
+        control value, or None if not using control signals.
     disable_conditioning_fn: A function that maps time step to whether or not
-          conditioning should be disabled, or None if there is no conditioning
-          or conditioning is not optional.
+        conditioning should be disabled, or None if there is no conditioning or
+        conditioning is not optional.
     control_events: The control sequence to extend.
     performance: The Performance being generated.
     control_state: A PerformanceControlState tuple containing the current
@@ -162,11 +146,7 @@ def _extend_control_events(note_density_fn, pitch_histogram_fn,
       step += performance[idx].event_value
     idx += 1
 
-    control_event = ()
-    if note_density_fn is not None:
-      control_event += (note_density_fn(step),)
-    if pitch_histogram_fn is not None:
-      control_event += (pitch_histogram_fn(step),)
+    control_event = tuple(f(step) for f in control_signal_fns)
     if disable_conditioning_fn is not None:
       control_event = (disable_conditioning_fn(step), control_event)
     control_events.append(control_event)

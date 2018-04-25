@@ -29,8 +29,6 @@ from magenta.music import sequences_lib
 from magenta.pipelines import statistics
 from magenta.protobuf import music_pb2
 
-NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
-
 MAX_MIDI_PITCH = constants.MAX_MIDI_PITCH
 MIN_MIDI_PITCH = constants.MIN_MIDI_PITCH
 
