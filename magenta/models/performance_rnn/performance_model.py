@@ -296,5 +296,25 @@ default_configs = {
             magenta.music.PitchHistogramPerformanceControlSignal(
                 window_size_seconds=5.0)
         ],
-        optional_conditioning=True)
+        optional_conditioning=True),
+
+    'velocity_conditioned_performance_with_dynamics': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='velocity_conditioned_performance_with_dynamics',
+            description='Note-velocity-conditioned Performance RNN + dynamics'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            magenta.music.PerformanceOneHotEncoding(
+                num_velocity_bins=32)),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001),
+        num_velocity_bins=32,
+        control_signals=[
+            magenta.music.VelocityPerformanceControlSignal(
+                window_size_seconds=3.0,
+                num_velocity_bins=32)
+        ]),
 }

@@ -17,6 +17,7 @@ from __future__ import division
 
 import abc
 import copy
+import math
 import numbers
 
 # internal imports
@@ -25,8 +26,12 @@ from magenta.music import encoder_decoder
 from magenta.music.performance_lib import PerformanceEvent
 
 NOTES_PER_OCTAVE = constants.NOTES_PER_OCTAVE
+MIN_MIDI_VELOCITY = constants.MIN_MIDI_VELOCITY
+MAX_MIDI_VELOCITY = constants.MAX_MIDI_VELOCITY
+
 DEFAULT_NOTE_DENSITY = 15.0
 DEFAULT_PITCH_HISTOGRAM = [1.0] * NOTES_PER_OCTAVE
+DEFAULT_MEAN_VELOCITY = 100.0
 
 
 class PerformanceControlSignal(object):
@@ -330,8 +335,138 @@ class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
       raise NotImplementedError
 
 
+class VelocityPerformanceControlSignal(PerformanceControlSignal):
+  """Note velocity performance control signal."""
+
+  name = 'mean_velocity'
+  description = 'Desired mean velocity of notes played.'
+
+  def __init__(self, window_size_seconds, num_velocity_bins):
+    """Initialize a VelocityPerformanceControlSignal.
+
+    Args:
+      window_size_seconds: The size of the window, in seconds, used to compute
+          mean note velocity.
+      num_velocity_bins: Number of velocity bins to use.
+    """
+    self._window_size_seconds = window_size_seconds
+    self._num_velocity_bins = num_velocity_bins
+    self._encoder = encoder_decoder.OneHotEventSequenceEncoderDecoder(
+        self.VelocityOneHotEncoding(num_velocity_bins))
+
+  def validate(self, value):
+    return isinstance(value, numbers.Number) and value >= 0.0
+
+  @property
+  def default_value(self):
+    return DEFAULT_MEAN_VELOCITY
+
+  @property
+  def encoder(self):
+    return self._encoder
+
+  def extract(self, performance):
+    """Computes mean velocity at every event in a performance.
+
+    Args:
+      performance: A Performance object for which to compute a mean velocity
+          sequence.
+
+    Returns:
+      A list of mean velocities of the same length as `performance`, with each
+      entry equal to the mean velocity in the window starting at the
+      corresponding performance event time.
+    """
+    window_size_steps = int(round(
+        self._window_size_seconds * performance.steps_per_second))
+    velocity_bin_size = int(math.ceil(
+        (MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1) / self._num_velocity_bins))
+
+    prev_event_type = None
+    prev_velocity = 0.0
+
+    base_velocity = 100
+    velocity_sequence = []
+
+    for i, event in enumerate(performance):
+      # Maintain the base velocity.
+      if event.event_type == PerformanceEvent.VELOCITY:
+        base_velocity = (
+            MIN_MIDI_VELOCITY + (event.event_value - 1) * velocity_bin_size)
+
+      if (prev_event_type is not None and
+          prev_event_type != PerformanceEvent.TIME_SHIFT):
+        # The previous event didn't move us forward in time, so the mean
+        # velocity here should be the same.
+        velocity_sequence.append(prev_velocity)
+        prev_event_type = event.event_type
+        continue
+
+      j = i
+      step_offset = 0
+
+      velocity = base_velocity
+      total_velocity = 0.0
+      note_count = 0
+
+      # Compute the mean velocity within the window.
+      while step_offset < window_size_steps and j < len(performance):
+        if performance[j].event_type == PerformanceEvent.NOTE_ON:
+          total_velocity += velocity
+          note_count += 1
+        elif performance[j].event_type == PerformanceEvent.TIME_SHIFT:
+          step_offset += performance[j].event_value
+        elif performance[j].event_type == PerformanceEvent.VELOCITY:
+          velocity = (
+              MIN_MIDI_VELOCITY +
+              (performance[j].event_value - 1) * velocity_bin_size)
+        j += 1
+      mean_velocity = total_velocity / note_count if note_count else 0.0
+
+      velocity_sequence.append(mean_velocity)
+
+      prev_event_type = event.event_type
+      prev_velocity = mean_velocity
+
+    return velocity_sequence
+
+  class VelocityOneHotEncoding(encoder_decoder.OneHotEncoding):
+    """One-hot encoding for performance mean velocity events."""
+
+    def __init__(self, num_velocity_bins):
+      """Initialize a VelocityOneHotEncoding.
+
+      Args:
+        num_velocity_bins: Number of velocity bins to use.
+      """
+      self._num_velocity_bins = num_velocity_bins
+      self._velocity_bin_size = int(math.ceil(
+          (MAX_MIDI_VELOCITY - MIN_MIDI_VELOCITY + 1) / num_velocity_bins))
+
+    @property
+    def num_classes(self):
+      return self._num_velocity_bins + 1
+
+    @property
+    def default_event(self):
+      return 0.0
+
+    def encode_event(self, event):
+      if event == 0.0:
+        return 0
+      else:
+        return int(event - MIN_MIDI_VELOCITY) // self._velocity_bin_size + 1
+
+    def decode_event(self, index):
+      if index == 0:
+        return 0.0
+      else:
+        return MIN_MIDI_VELOCITY + (index - 1) * self._velocity_bin_size
+
+
 # List of performance control signal classes.
 all_performance_control_signals = [
     NoteDensityPerformanceControlSignal,
-    PitchHistogramPerformanceControlSignal
+    PitchHistogramPerformanceControlSignal,
+    VelocityPerformanceControlSignal
 ]

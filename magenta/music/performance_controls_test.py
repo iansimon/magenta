@@ -150,5 +150,65 @@ class PitchHistogramPerformanceControlSignalTest(tf.test.TestCase):
         self.control.encoder.events_to_input(histogram_sequence, 3))
 
 
+class VelocityPerformanceControlSignalTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.control = performance_controls.VelocityPerformanceControlSignal(
+        window_size_seconds=1.0, num_velocity_bins=4)
+
+  def testExtract(self):
+    performance = performance_lib.Performance(
+        steps_per_second=100, num_velocity_bins=4)
+
+    pe = performance_lib.PerformanceEvent
+    perf_events = [
+        pe(pe.VELOCITY, 4),
+        pe(pe.NOTE_ON, 60),
+        pe(pe.TIME_SHIFT, 50),
+        pe(pe.VELOCITY, 2),
+        pe(pe.NOTE_ON, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_OFF, 60),
+        pe(pe.NOTE_OFF, 64),
+        pe(pe.TIME_SHIFT, 100),
+        pe(pe.NOTE_ON, 67),
+        pe(pe.TIME_SHIFT, 25),
+        pe(pe.NOTE_OFF, 67),
+    ]
+    for event in perf_events:
+      performance.append(event)
+
+    expected_velocity_sequence = [
+        65.0, 65.0, 65.0, 33.0, 33.0, 33.0, 0.0, 0.0, 0.0, 33.0, 33.0, 0.0]
+
+    velocity_sequence = self.control.extract(performance)
+    self.assertEqual(expected_velocity_sequence, velocity_sequence)
+
+  def testEncoder(self):
+    velocity_sequence = [0.0, 30.0, 33.0, 34.0, 97.0, 127.0]
+
+    expected_inputs = [
+        [1.0, 0.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, 0.0, 0.0, 1.0],
+    ]
+
+    self.assertEqual(expected_inputs[0],
+                     self.control.encoder.events_to_input(velocity_sequence, 0))
+    self.assertEqual(expected_inputs[1],
+                     self.control.encoder.events_to_input(velocity_sequence, 1))
+    self.assertEqual(expected_inputs[2],
+                     self.control.encoder.events_to_input(velocity_sequence, 2))
+    self.assertEqual(expected_inputs[3],
+                     self.control.encoder.events_to_input(velocity_sequence, 3))
+    self.assertEqual(expected_inputs[4],
+                     self.control.encoder.events_to_input(velocity_sequence, 4))
+    self.assertEqual(expected_inputs[5],
+                     self.control.encoder.events_to_input(velocity_sequence, 5))
+
+
 if __name__ == '__main__':
   tf.test.main()
