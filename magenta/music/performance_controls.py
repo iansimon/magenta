@@ -31,7 +31,7 @@ MAX_MIDI_VELOCITY = constants.MAX_MIDI_VELOCITY
 
 DEFAULT_NOTE_DENSITY = 15.0
 DEFAULT_PITCH_HISTOGRAM = [1.0] * NOTES_PER_OCTAVE
-DEFAULT_MEAN_VELOCITY = 100.0
+DEFAULT_MAX_VELOCITY = 100.0
 
 
 class PerformanceControlSignal(object):
@@ -338,8 +338,8 @@ class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
 class VelocityPerformanceControlSignal(PerformanceControlSignal):
   """Note velocity performance control signal."""
 
-  name = 'mean_velocity'
-  description = 'Desired mean velocity of notes played.'
+  name = 'max_velocity'
+  description = 'Desired max velocity of notes played.'
 
   def __init__(self, window_size_seconds, num_velocity_bins):
     """Initialize a VelocityPerformanceControlSignal.
@@ -359,7 +359,7 @@ class VelocityPerformanceControlSignal(PerformanceControlSignal):
 
   @property
   def default_value(self):
-    return DEFAULT_MEAN_VELOCITY
+    return DEFAULT_MAX_VELOCITY
 
   @property
   def encoder(self):
@@ -369,12 +369,12 @@ class VelocityPerformanceControlSignal(PerformanceControlSignal):
     """Computes mean velocity at every event in a performance.
 
     Args:
-      performance: A Performance object for which to compute a mean velocity
+      performance: A Performance object for which to compute a max velocity
           sequence.
 
     Returns:
-      A list of mean velocities of the same length as `performance`, with each
-      entry equal to the mean velocity in the window starting at the
+      A list of max velocities of the same length as `performance`, with each
+      entry equal to the max velocity in the window starting at the
       corresponding performance event time.
     """
     window_size_steps = int(round(
@@ -406,14 +406,12 @@ class VelocityPerformanceControlSignal(PerformanceControlSignal):
       step_offset = 0
 
       velocity = base_velocity
-      total_velocity = 0.0
-      note_count = 0
+      max_velocity = 0.0
 
-      # Compute the mean velocity within the window.
+      # Compute the max velocity within the window.
       while step_offset < window_size_steps and j < len(performance):
         if performance[j].event_type == PerformanceEvent.NOTE_ON:
-          total_velocity += velocity
-          note_count += 1
+          max_velocity = max(max_velocity, velocity)
         elif performance[j].event_type == PerformanceEvent.TIME_SHIFT:
           step_offset += performance[j].event_value
         elif performance[j].event_type == PerformanceEvent.VELOCITY:
@@ -421,17 +419,16 @@ class VelocityPerformanceControlSignal(PerformanceControlSignal):
               MIN_MIDI_VELOCITY +
               (performance[j].event_value - 1) * velocity_bin_size)
         j += 1
-      mean_velocity = total_velocity / note_count if note_count else 0.0
 
-      velocity_sequence.append(mean_velocity)
+      velocity_sequence.append(max_velocity)
 
       prev_event_type = event.event_type
-      prev_velocity = mean_velocity
+      prev_velocity = max_velocity
 
     return velocity_sequence
 
   class VelocityOneHotEncoding(encoder_decoder.OneHotEncoding):
-    """One-hot encoding for performance mean velocity events."""
+    """One-hot encoding for performance max velocity events."""
 
     def __init__(self, num_velocity_bins):
       """Initialize a VelocityOneHotEncoding.

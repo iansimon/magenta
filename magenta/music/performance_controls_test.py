@@ -179,7 +179,7 @@ class VelocityPerformanceControlSignalTest(tf.test.TestCase):
       performance.append(event)
 
     expected_velocity_sequence = [
-        65.0, 65.0, 65.0, 33.0, 33.0, 33.0, 0.0, 0.0, 0.0, 33.0, 33.0, 0.0]
+        97.0, 97.0, 97.0, 33.0, 33.0, 33.0, 0.0, 0.0, 0.0, 33.0, 33.0, 0.0]
 
     velocity_sequence = self.control.extract(performance)
     self.assertEqual(expected_velocity_sequence, velocity_sequence)
