@@ -42,6 +42,8 @@ DEFAULT_MAX_SHIFT_QUARTERS = 4
 
 DEFAULT_PROGRAM = 0
 
+BEAT = music_pb2.NoteSequence.TextAnnotation.BEAT
+
 
 class PerformanceEvent(object):
   """Class for storing events in a performance."""
@@ -539,10 +541,17 @@ class Performance(BasePerformance):
           max_shift_steps=max_shift_steps, instrument=instrument)
       program, is_drum = self._program_and_is_drum_from_sequence(
           quantized_sequence, instrument)
+      self._beats = sorted(set([
+          ta.quantized_step - start_step
+          for ta in quantized_sequence.text_annotations
+          if ta.annotation_type == BEAT
+          and ta.quantized_step >= start_step
+      ]))
 
     else:
       self._steps_per_second = steps_per_second
       self._events = []
+      self._beats = []
 
     super(Performance, self).__init__(
         start_step=start_step,
@@ -555,6 +564,10 @@ class Performance(BasePerformance):
   def steps_per_second(self):
     return self._steps_per_second
 
+  @property
+  def beats(self):
+    return self._beats
+    
   def to_sequence(self,
                   velocity=100,
                   instrument=0,

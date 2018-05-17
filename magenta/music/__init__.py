@@ -91,6 +91,7 @@ from magenta.music.notebook_utils import play_sequence
 from magenta.music.notebook_utils import plot_sequence
 
 from magenta.music.performance_controls import all_performance_control_signals
+from magenta.music.performance_controls import BeatPerformanceControlSignal
 from magenta.music.performance_controls import NoteDensityPerformanceControlSignal
 from magenta.music.performance_controls import PitchHistogramPerformanceControlSignal
 

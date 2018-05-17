@@ -196,7 +196,7 @@ class PerformanceRnnSequenceGenerator(mm.BaseSequenceGenerator):
       control_signal_fns = []
       for control in self.control_signals:
         control_signal_fns.append(partial(
-            _step_to_value,
+            control.step_to_value,
             num_steps=total_steps,
             values=args[control.name]))
         del args[control.name]

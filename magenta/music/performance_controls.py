@@ -76,6 +76,12 @@ class PerformanceControlSignal(object):
       A sequence of control signal values the same length as `performance`.
     """
     pass
+    
+  def step_to_value(self, step, num_steps, values):
+    """Map step in performance to desired control signal value."""
+    num_segments = len(values)
+    index = min(step * num_segments // num_steps, num_segments - 1)
+    return values[index]
 
 
 class NoteDensityPerformanceControlSignal(PerformanceControlSignal):
@@ -330,8 +336,120 @@ class PitchHistogramPerformanceControlSignal(PerformanceControlSignal):
       raise NotImplementedError
 
 
+class BeatPerformanceControlSignal(PerformanceControlSignal):
+  """Beat performance control signal."""
+
+  name = 'beats_per_minute'
+  description = 'Desired number of beats per minute.'
+
+  def __init__(self, steps_per_second):
+    """Initializes a BeatPerformanceControlSignal.
+
+    Args:
+      steps_per_second: Number of steps per second in the performance
+          representation.
+    """
+    self._steps_per_second = steps_per_second
+    self._encoder = self.BeatEncoder()
+
+  @property
+  def default_value(self):
+    return [0.0, 0.5]
+
+  def validate(self, value):
+    return isinstance(value, numbers.Number) and value > 0.0
+
+  @property
+  def encoder(self):
+    return self._encoder
+
+  def extract(self, performance):
+    """Computes beat representation at every event of a performance.
+
+    Args:
+      performance: A Performance object for which to compute a beat sequence.
+
+    Returns:
+      A list of beat events the same length as `performance`, where each beat
+      event is a length-2 list of time-from-last-beat and time-to-next-beat.
+    
+    Raises:
+      ValueError: If `performance` uses a different value of `steps_per_second`.
+    """
+    if performance.steps_per_second != self._steps_per_second:
+      raise ValueError('Steps per second mismatch: %d != %d' % (
+          performance.steps_per_second, self._steps_per_second))
+
+    # Take the beats from the Performance object, but make sure that a) the
+    # first beat is at step zero, and b) the last beat is after the last step.
+    beats = copy.deepcopy(performance.beats)
+    if not beats:
+      beats = [0]
+    elif beats[0] != 0:
+      beats.insert(0, 0)
+    if len(beats) < 2:
+      beats.append(performance.num_steps + 1)
+    while beats[-1] <= performance.num_steps:
+      beats.append(beats[-1] + beats[-1] - beats[-2])
+      
+    beat_sequence = []      
+    beat_index = 0
+    step = 0
+    
+    for i, event in enumerate(performance):
+      beat_event = [
+          (step - beats[beat_index]) / self._steps_per_second,
+          (beats[beat_index + 1] - step) / self._steps_per_second
+      ]
+      beat_sequence.append(beat_event)
+      
+      if event.event_type == PerformanceEvent.TIME_SHIFT:
+        step += event.event_value
+        while beats[beat_index + 1] <= step:
+          beat_index += 1
+        
+    return beat_sequence
+
+  def step_to_value(self, step, num_steps, values):
+    """Map step in performance to desired beat event value."""
+    num_segments = len(values)
+    index = min(step * num_segments // num_steps, num_segments - 1)
+    bpm = values[index]    
+    steps_per_beat = 60.0 * self._steps_per_second / bpm
+    step_offset = step % steps_per_beat
+    return [
+        step_offset / self._steps_per_second,
+        (steps_per_beat - step_offset) / self._steps_per_second
+    ]
+
+  class BeatEncoder(encoder_decoder.EventSequenceEncoderDecoder):
+    """An encoder for beat event sequences."""
+
+    @property
+    def input_size(self):
+      return 2
+
+    @property
+    def num_classes(self):
+      raise NotImplementedError
+
+    @property
+    def default_event_label(self):
+      raise NotImplementedError
+
+    def events_to_input(self, events, position):
+      return events[position]
+
+    def events_to_label(self, events, position):
+      raise NotImplementedError
+
+    def class_index_to_event(self, class_index, events):
+      raise NotImplementedError
+
+
 # List of performance control signal classes.
 all_performance_control_signals = [
     NoteDensityPerformanceControlSignal,
-    PitchHistogramPerformanceControlSignal
+    PitchHistogramPerformanceControlSignal,
+    BeatPerformanceControlSignal
 ]
