@@ -20,8 +20,6 @@ from __future__ import print_function
 import functools
 import itertools
 
-import apache_beam as beam
-
 from tensor2tensor.data_generators import problem
 from tensor2tensor.layers import modalities as t2t_modalities
 from tensor2tensor.utils import registry
@@ -115,10 +113,10 @@ class Score2PerfProblem(problem.Problem):
             min_allowed_pitch=MIN_PITCH, max_allowed_pitch=MAX_PITCH,
             in_place=True)
       except chord_symbols_lib.ChordSymbolException:
-        raise datagen_beam.DataAugmentationException(
+        raise datagen_beam.DataAugmentationError(
             'Transposition of chord symbol(s) failed.')
       if num_deleted_notes:
-        raise datagen_beam.DataAugmentationException(
+        raise datagen_beam.DataAugmentationError(
             'Transposition caused out-of-range pitch(es).')
       return augmented_ns
 

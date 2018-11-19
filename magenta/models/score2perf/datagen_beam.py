@@ -36,7 +36,6 @@ import tensorflow as tf
 
 from magenta.music import chord_inference
 from magenta.music import melody_inference
-from magenta.music import midi_io
 from magenta.music import sequences_lib
 from magenta.protobuf import music_pb2
 
@@ -89,7 +88,7 @@ def filter_invalid_notes(min_pitch, max_pitch, kv):
   return key, ns
 
 
-class DataAugmentationException(Exception):
+class DataAugmentationError(Exception):
   """Exception to be raised by augmentation functions on known failure."""
   pass
 
@@ -276,7 +275,7 @@ class ExtractExamplesDoFn(beam.DoFn):
         # Augment and encode the performance.
         try:
           augmented_performance_sequence = augment_fn(performance_sequence)
-        except DataAugmentationException:
+        except DataAugmentationError:
           Metrics.counter(
               'extract_examples', 'augment_performance_failed').inc()
           continue
@@ -292,7 +291,7 @@ class ExtractExamplesDoFn(beam.DoFn):
           # Augment the extracted score.
           try:
             augmented_score_sequence = augment_fn(score_sequence)
-          except DataAugmentationException:
+          except DataAugmentationError:
             Metrics.counter('extract_examples', 'augment_score_failed').inc()
             continue
 

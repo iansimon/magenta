@@ -51,7 +51,7 @@ class GenerateExamplesTest(tf.test.TestCase):
     testing_lib.add_track_to_sequence(
         ns, 0, [(60, 100, 0.0, 1.0), (64, 100, 1.0, 2.0), (67, 127, 2.0, 3.0)])
     input_transform = beam.transforms.Create([('0', ns)])
-    output_dir=tempfile.mkdtemp()
+    output_dir = tempfile.mkdtemp()
     encoder = music_encoders.MidiPerformanceEncoder(
         steps_per_second=100,
         num_velocity_bins=32,
