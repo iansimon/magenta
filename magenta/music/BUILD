@@ -38,6 +38,7 @@ py_library(
         ":lead_sheets_lib",
         ":melodies_lib",
         ":melody_encoder_decoder",
+        ":melody_inference",
         ":midi_io",
         ":midi_synth",
         ":model",

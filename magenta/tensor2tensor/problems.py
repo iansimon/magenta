@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2018 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Imports Magenta problems so that they register with Tensor2Tensor."""
 
-# Description:
-# Data for unit tests.
-
-package(
-    default_visibility = ["//magenta:__subpackages__"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-filegroup(
-    name = "testdata",
-    srcs = [
-        "example.mid",
-        "example_complex.mid",
-        "example_event_order.mid",
-        "example_is_drum.mid",
-        "musicnet_example.npz",
-        "tfrecord_iterator_test.tfrecord",
-    ],
-)
+# pylint: disable=unused-import
+from magenta.models import score2perf
+# pylint: enable=unused-import

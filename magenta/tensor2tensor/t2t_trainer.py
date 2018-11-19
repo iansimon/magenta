@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2018 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Tensor2Tensor trainer for Magenta problems."""
 
-# Description:
-# Data for unit tests.
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-package(
-    default_visibility = ["//magenta:__subpackages__"],
-)
+from tensor2tensor.bin import t2t_trainer
+import tensorflow as tf
 
-licenses(["notice"])  # Apache 2.0
+# Registers all Magenta problems with Tensor2Tensor.
+from magenta.tensor2tensor import problems  # pylint: disable=unused-import
 
-filegroup(
-    name = "testdata",
-    srcs = [
-        "example.mid",
-        "example_complex.mid",
-        "example_event_order.mid",
-        "example_is_drum.mid",
-        "musicnet_example.npz",
-        "tfrecord_iterator_test.tfrecord",
-    ],
-)
+
+def main(argv):
+  t2t_trainer.main(argv)
+
+
+if __name__ == "__main__":
+  tf.logging.set_verbosity(tf.logging.INFO)
+  tf.app.run()

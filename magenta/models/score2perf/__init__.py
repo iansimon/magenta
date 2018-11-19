@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2018 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Import of Score2Perf problem module."""
 
-# Description:
-# Data for unit tests.
-
-package(
-    default_visibility = ["//magenta:__subpackages__"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
-filegroup(
-    name = "testdata",
-    srcs = [
-        "example.mid",
-        "example_complex.mid",
-        "example_event_order.mid",
-        "example_is_drum.mid",
-        "musicnet_example.npz",
-        "tfrecord_iterator_test.tfrecord",
-    ],
-)
+from magenta.models.score2perf import score2perf

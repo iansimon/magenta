@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2018 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,23 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Description:
-# Data for unit tests.
-
 package(
     default_visibility = ["//magenta:__subpackages__"],
 )
 
 licenses(["notice"])  # Apache 2.0
 
-filegroup(
-    name = "testdata",
-    srcs = [
-        "example.mid",
-        "example_complex.mid",
-        "example_event_order.mid",
-        "example_is_drum.mid",
-        "musicnet_example.npz",
-        "tfrecord_iterator_test.tfrecord",
+py_library(
+    name = "problems",
+    srcs = ["problems.py"],
+    deps = [
+        "//magenta/models/score2perf",
+    ],
+)
+
+py_binary(
+    name = "t2t_datagen",
+    srcs = ["t2t_datagen.py"],
+    deps = [
+        ":problems",
+        # tensor2tensor/bin:t2t_datagen_bare dep
+    ],
+)
+
+py_binary(
+    name = "t2t_decoder",
+    srcs = ["t2t_decoder.py"],
+    deps = [
+        ":problems",
+        # tensor2tensor/bin:t2t_decoder_lib dep
+    ],
+)
+
+py_binary(
+    name = "t2t_trainer",
+    srcs = ["t2t_trainer.py"],
+    deps = [
+        ":problems",
+        # tensor2tensor/bin:t2t_trainer_bare dep
     ],
 )
