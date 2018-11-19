@@ -89,6 +89,7 @@ py_library(
         ":datagen_beam",
         ":modalities",
         ":music_encoders",
+        # GCS dep
         # tensorflow dep
         # tensor2tensor/data_generators:problem dep
         # tensor2tensor/layers:modalities dep
