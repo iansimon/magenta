@@ -42,11 +42,13 @@ STEPS_PER_SECOND = 100
 MIN_PITCH = 21
 MAX_PITCH = 108
 
+# pylint: disable=line-too-long
 MAESTRO_TFRECORD_PATHS = {
-    'train': 'gs://score2perf/maestro-v1.0.0_train.tfrecord',
-    'dev': 'gs://score2perf/maestro-v1.0.0_validation.tfrecord',
-    'test': 'gs://score2perf/maestro-v1.0.0_test.tfrecord'
+    'train': 'gs://magentadata/datasets/maestro/v1.0.0/maestro-v1.0.0_train.tfrecord',
+    'dev': 'gs://magentadata/datasets/maestro/v1.0.0/maestro-v1.0.0_validation.tfrecord',
+    'test': 'gs://magentadata/datasets/maestro/v1.0.0/maestro-v1.0.0_test.tfrecord'
 }
+# pylint: enable=line-too-long
 
 
 class Score2PerfProblem(problem.Problem):
