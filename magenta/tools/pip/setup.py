@@ -47,6 +47,7 @@ REQUIRED_PACKAGES = [
     'pretty_midi >= 0.2.6',
     'python-rtmidi',
     'scipy >= 0.18.1',
+    'tensor2tensor >= 1.10.0',
     'wheel',
 ]
 
@@ -97,6 +98,9 @@ CONSOLE_SCRIPTS = [
     'magenta.models.polyphony_rnn.polyphony_rnn_train',
     'magenta.models.rl_tuner.rl_tuner_train',
     'magenta.models.sketch_rnn.sketch_rnn_train',
+    'magenta.tensor2tensor.t2t_datagen',
+    'magenta.tensor2tensor.t2t_decoder',
+    'magenta.tensor2tensor.t2t_trainer',
     'magenta.scripts.convert_dir_to_note_sequences',
 ]
 # pylint:enable=line-too-long
