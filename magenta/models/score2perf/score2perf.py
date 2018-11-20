@@ -96,6 +96,16 @@ class Score2PerfProblem(problem.Problem):
     """Pitch transposition amounts for data augmentation (in datagen)."""
     return [0]
 
+  @property
+  def random_crop_in_train(self):
+    """Whether to randomly crop each training example when preprocessing."""
+    return False
+
+  @property
+  def split_in_eval(self):
+    """Whether to split each eval example when preprocessing."""
+    return False
+
   def performances_input_collection(self, tmp_dir):
     """Input performances beam transform (or dictionary thereof) for datagen."""
     raise NotImplementedError()
@@ -209,8 +219,42 @@ class Score2PerfProblem(problem.Problem):
         del example[name]
       example['inputs'] = tf.stack(inputs, axis=2)
 
-    return super(Score2PerfProblem, self).preprocess_example(
-        example, mode, hparams)
+    if self.random_crop_in_train and mode == tf.estimator.ModeKeys.TRAIN:
+      # Take a random crop of the training example.
+      assert not self.has_inputs
+      max_offset = tf.maximum(
+          tf.shape(example['targets'])[0] - hparams.max_target_seq_length, 0)
+      offset = tf.cond(
+          max_offset > 0,
+          lambda: tf.random_uniform([], maxval=max_offset, dtype=tf.int32),
+          lambda: 0
+      )
+      example['targets'] = (
+          example['targets'][offset:offset + hparams.max_target_seq_length])
+      return example
+
+    elif self.split_in_eval and mode == tf.estimator.ModeKeys.EVAL:
+      # Split the example into non-overlapping segments.
+      assert not self.has_inputs
+      length = tf.shape(example['targets'])[0]
+      extra_length = tf.mod(length, hparams.max_target_seq_length)
+      examples = {
+          'targets': tf.reshape(
+              example['targets'][:length - extra_length],
+              [-1, hparams.max_target_seq_length, 1, 1])
+      }
+      extra_example = {
+          'targets': tf.reshape(
+              example['targets'][-extra_length:], [1, -1, 1, 1])
+      }
+      dataset = tf.data.Dataset.from_tensor_slices(examples)
+      extra_dataset = tf.data.Dataset.from_tensor_slices(extra_example)
+      return dataset.concatenate(extra_dataset)
+
+    else:
+      # If not cropping or splitting, do standard preprocessing.
+      return super(Score2PerfProblem, self).preprocess_example(
+          example, mode, hparams)
 
 
 class Chords2PerfProblem(Score2PerfProblem):
@@ -255,8 +299,8 @@ class LeadSheet2PerfProblem(Score2PerfProblem):
     ]
 
 
-@registry.register_problem('score2perf_maestro_language_30s_aug')
-class Score2PerfMaestroLanguage30sAug(Score2PerfProblem):
+@registry.register_problem('score2perf_maestro_language_uncropped_aug')
+class Score2PerfMaestroLanguageUncroppedAug(Score2PerfProblem):
   """Piano performance language model on the MAESTRO dataset."""
 
   def performances_input_transform(self, tmp_dir):
@@ -271,11 +315,11 @@ class Score2PerfMaestroLanguage30sAug(Score2PerfProblem):
 
   @property
   def min_hop_size_seconds(self):
-    return 30.0
+    return 0.0
 
   @property
   def max_hop_size_seconds(self):
-    return 30.0
+    return 0.0
 
   @property
   def add_eos_symbol(self):
@@ -290,3 +334,11 @@ class Score2PerfMaestroLanguage30sAug(Score2PerfProblem):
   def transpose_amounts(self):
     # Transpose no more than a minor third.
     return [-3, -2, -1, 0, 1, 2, 3]
+
+  @property
+  def random_crop_in_train(self):
+    return True
+
+  @property
+  def split_in_eval(self):
+    return True
